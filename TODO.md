@@ -2,17 +2,20 @@
 
 接下来要完善的功能，按优先级排列。方便开新对话直接从这里接着做。
 
-## 1. 提取质量（优先，先做这个）
+## ~~1. 提取质量~~（已完成 2026-07-23）
 
-把 `src/vision.py` 的 prompt 筛选标准改成：
+已把 `src/vision.py` 的 prompt 筛选标准改成：
 
 > 只提取中低频（mid-to-low frequency）、有实际语义的地道表达——包括 idioms、
 > phrasal verbs、collocations、slang。排除所有高频词、功能词、感叹词和填充词
 > （如 huh、oh、um、well、you know）。判断标准：一个受过良好教育的英语学习者
 > 是否"看得懂但自己主动表达时想不到用它"。
 
-**具体验收案例：**
-- 字幕 `"Oh, she's a bummer, huh?"` → 应只提取 `bummer`，不要提取 `huh?`。
+同时放宽了"每张必出一条"的硬规则：宁可返回空也不用填充词凑数
+（`watcher.py` 已能优雅跳过空结果）。
+
+**验收案例已通过：**
+- 字幕 `"Oh, she's a bummer, huh?"` → 实测只提取 `bummer`，未提取 `huh?`。✓
 
 ## 2. 复习闭环（第二期核心）
 

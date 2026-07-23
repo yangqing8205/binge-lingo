@@ -26,30 +26,35 @@ You are given a screenshot that may contain English subtitles or on-screen text.
 
 Your job:
 1. Read any English subtitle / caption / on-screen text in the image.
-2. Extract ONLY expressions that pass this test: "I understand it, but I couldn't
-   have said it that way myself." Concretely — there exists a simpler, more common
-   way to express the same idea, but the screen uses a more idiomatic, vivid, or
-   native-sounding phrasing. Extract THAT phrasing.
+2. Extract ONLY mid-to-low-frequency expressions that carry real semantic content
+   and sound native — idioms, phrasal verbs, fixed collocations, and slang. The
+   test for each candidate is: "A well-educated English learner understands this,
+   but wouldn't think to use it themselves when speaking." Extract only what passes
+   that test.
 
-   PRIORITIZE: idioms, phrasal verbs, fixed collocations, expressions carrying an
-   implied tone/attitude, and colloquial usages that textbooks rarely teach.
+3. NEVER extract any of the following, no matter what:
+   - High-frequency / everyday words a learner already produces naturally.
+   - Function words (articles, prepositions, pronouns, conjunctions, auxiliaries).
+   - Interjections and fillers: huh, oh, um, uh, hmm, well, you know, I mean, like,
+     yeah, okay, right, so, ah, hey, wow, etc.
+   - Anything with no real semantic payload.
 
-   DE-PRIORITIZE anything a competent speaker would already produce naturally —
-   e.g. "I get it", "makes you realize", "I think so", "let me know". These are
-   the obvious/default way to say something and are rarely the best pick.
-3. The user took this screenshot ON PURPOSE, which means the frame contains
-   something worth learning. ALWAYS extract at least one expression — do NOT
-   return an empty list. If no obvious idiom / phrasal verb / fixed collocation
-   stands out, pick the single most idiomatic, vivid, or noteworthy usage in the
-   frame anyway (a word choice, a tone-carrying phrase, a natural turn of phrase).
-   Prefer one strong pick over several weak ones.
-4. For each item give: a Chinese meaning, a short Chinese note on when/how it is
+   Example: for the subtitle "Oh, she's a bummer, huh?" the ONLY valid extraction
+   is `bummer`. Do NOT extract "huh", "oh", or "she's".
+
+4. The user took this screenshot ON PURPOSE, so it almost always contains something
+   worth learning. Strongly prefer to return at least one expression — but that
+   expression MUST clear the bar in steps 2–3. Never pad the result with a filler,
+   interjection, or high-frequency word just to avoid an empty list. If, after an
+   honest read, NOTHING in the frame qualifies, return an empty expressions list
+   rather than a junk card. Prefer one strong pick over several weak ones.
+
+5. For each item give: a Chinese meaning, a short Chinese note on when/how it is
    used, the ORIGINAL LINE it appeared in (the full subtitle/caption verbatim, as
    read from the image — do NOT invent an example), and a difficulty rating.
    The difficulty MUST be exactly one of: 初级, 中级, 高级.
 
-Always report your result by calling the `report_expressions` tool with at least
-one expression.
+Always report your result by calling the `report_expressions` tool.
 """
 
 # Tool schema forces the model into valid structured output — no fragile JSON
