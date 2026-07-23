@@ -1,0 +1,20 @@
+# Environment / secrets
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Screenshots captured at runtime
+screenshots/*
+!screenshots/.gitkeep
+
+# Local state
+.processed_screenshots.json
+
+# OS
+.DS_Store
