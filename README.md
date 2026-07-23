@@ -43,6 +43,8 @@ skip.
 ## Features
 
 - **Zero-friction capture** — screenshot with a hotkey, everything else is automatic.
+- **Built-in reviewer** — a local web app reads your cards back from Notion for
+  study, with three recall modes (cloze / zh→en / en→zh).
 - **Advanced-learner filtering** — a carefully tuned prompt rejects the obvious and
   surfaces the idiomatic. A deliberate screenshot always yields at least one card.
 - **Structured Notion output** — writes directly into typed database columns
@@ -72,19 +74,25 @@ skip.
 
 ```
 binge-lingo/
-├── main.py                 Entry point: watch mode, or single-image test mode
+├── main.py                 Capture pipeline entry: watch mode, or single-image test
+├── review.py               Reviewer entry: local Flask web app for studying cards
 ├── start-watching.command  Double-click launcher (foreground, quit to stop)
 ├── requirements.txt
 ├── .env                    Your secrets — git-ignored, never committed
 ├── .env.example            Config template
 ├── .gitignore
 ├── screenshots/            Watched folder (contents git-ignored)
+├── web/                    Reviewer front end (static, served by review.py)
+│   ├── index.html
+│   ├── style.css
+│   └── app.js
 └── src/
     ├── config.py           Loads and validates .env; central settings
     ├── models.py           Expression / ScreenshotAnalysis dataclasses
     ├── vision.py           Multimodal LLM call + tolerant structured parsing
     ├── uploader.py         Image upload to Notion (or Imgur), with SSL retry
     ├── notion_writer.py    Resolves the data source, writes one row per card
+    ├── notion_reader.py    Reads cards back out: properties + image + cloze
     └── watcher.py          watchdog observer + end-to-end pipeline orchestration
 ```
 
@@ -152,6 +160,32 @@ FILE="$HOME/binge-lingo/screenshots/binge-$(date +%Y%m%d-%H%M%S).png"
 
 Save it, then assign a shortcut under **System Settings → Keyboard → Keyboard
 Shortcuts → Services**.
+
+## Review
+
+Once you've collected some cards, study them in the browser. The reviewer reads
+your Notion database live — no export step, no local copy to keep in sync.
+
+```bash
+python review.py
+# then open http://127.0.0.1:5001
+```
+
+The Notion token and proxy stay server-side; the browser only receives the
+flattened card data. Three review modes, switchable in the UI:
+
+- **挖空猜词 (cloze)** — the screenshot plus the original line with the target
+  expression blanked out (`Oh, she's a ___, huh?`). Recall it from the scene and
+  context, then reveal the full line, the expression, and the Chinese gloss.
+- **中译英 (zh → en)** — the Chinese meaning plus the screenshot; recall the
+  English expression.
+- **英译中 (en → zh)** — the English expression alone; recall the meaning, then
+  reveal the gloss, line, and screenshot.
+
+Page through with the on-screen buttons or the arrow keys, and reveal with the
+space bar. If an expression can't be located in its example line (casing or
+inflection differences), that card quietly falls back to中译英 rather than
+showing a blank.
 
 ## License
 
