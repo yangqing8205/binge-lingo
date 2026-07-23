@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BingeLingo · 复习</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">BingeLingo</span>
+      <span class="brand-sub">复习</span>
+    </div>
+    <div class="modes" role="tablist" aria-label="复习模式">
+      <button class="mode-btn is-active" data-mode="cloze"  role="tab">挖空猜词</button>
+      <button class="mode-btn"           data-mode="zh2en" role="tab">中译英</button>
+      <button class="mode-btn"           data-mode="en2zh" role="tab">英译中</button>
+    </div>
+  </header>
+
+  <main class="stage">
+    <!-- status / empty / error notice -->
+    <div id="notice" class="notice" hidden></div>
+
+    <!-- the card -->
+    <section id="card" class="card" hidden>
+      <figure class="shot" id="shot">
+        <img id="shot-img" alt="剧照" />
+        <div id="shot-empty" class="shot-empty">无剧照</div>
+      </figure>
+
+      <div class="body">
+        <div class="difficulty" id="difficulty"></div>
+
+        <!-- prompt: what the learner sees before revealing -->
+        <div class="prompt" id="prompt"></div>
+
+        <!-- answer: revealed on demand -->
+        <div class="answer" id="answer" hidden>
+          <div class="answer-expression" id="a-expression"></div>
+          <div class="answer-line" id="a-line"></div>
+          <div class="answer-cn" id="a-chinese"></div>
+          <div class="answer-context" id="a-context"></div>
+        </div>
+
+        <button id="reveal" class="reveal">揭晓 <span class="hint">Space</span></button>
+      </div>
+    </section>
+  </main>
+
+  <footer class="nav" id="nav" hidden>
+    <button id="prev" class="nav-btn">← 上一张</button>
+    <span id="counter" class="counter">0 / 0</span>
+    <button id="next" class="nav-btn">下一张 →</button>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>
