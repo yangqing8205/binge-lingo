@@ -118,6 +118,24 @@ body {
   font-size: 14px;
 }
 
+/* Cloze mode hides the burned-in subtitle so it can't spoil the blank.
+   Covers the bottom band where subtitles sit;画面上方 stays visible. */
+.subtitle-mask {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 25%;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  background: linear-gradient(
+    to top,
+    rgba(13, 15, 18, .92) 0%,
+    rgba(13, 15, 18, .82) 55%,
+    rgba(13, 15, 18, 0) 100%
+  );
+}
+
 .body { padding: 24px 28px 28px; }
 
 .difficulty {
@@ -175,6 +193,57 @@ body {
   line-height: 1.6;
 }
 .answer-context:empty { display: none; }
+
+/* ---- typed guess ---- */
+.guess {
+  margin-top: 22px;
+  display: flex;
+  gap: 10px;
+}
+.guess-input {
+  flex: 1;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 16px;
+  color: var(--ink);
+  background: var(--surface);
+  outline: none;
+  transition: border-color .15s;
+}
+.guess-input:focus { border-color: var(--accent); }
+.guess-submit {
+  border: 0;
+  background: var(--accent);
+  color: #fff;
+  font-size: 15px;
+  padding: 0 20px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: opacity .15s;
+}
+.guess-submit:hover { opacity: .88; }
+
+.verdict {
+  margin-top: 14px;
+  padding: 12px 14px;
+  border-radius: 10px;
+  font-size: 15px;
+  line-height: 1.6;
+  animation: fade .18s ease;
+}
+.verdict.ok {
+  background: #e7f6ec;
+  color: #1c7a41;
+  border: 1px solid #bfe6cd;
+}
+.verdict.miss {
+  background: #fff6e9;
+  color: #8a5a12;
+  border: 1px solid #f2ddb6;
+}
+.verdict .yours { text-decoration: line-through; opacity: .7; }
+.verdict .right { font-weight: 700; }
 
 /* ---- reveal button ---- */
 .reveal {

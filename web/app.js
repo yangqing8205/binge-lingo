@@ -26,7 +26,27 @@ const el = {
   prev: $("prev"),
   next: $("next"),
   counter: $("counter"),
+  mask: $("subtitle-mask"),
+  guess: $("guess"),
+  guessInput: $("guess-input"),
+  guessSubmit: $("guess-submit"),
+  verdict: $("verdict"),
 };
+
+// Modes where the learner recalls the English expression, so a typed input helps.
+const GUESS_MODES = new Set(["cloze", "zh2en"]);
+
+// Loose normalization for judging: lowercase, collapse inner whitespace,
+// trim, and drop trailing punctuation. So "You were off your game." matches
+// "off your game".
+function normalizeAnswer(s) {
+  return String(s == null ? "" : s)
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/[.,!?;:'"“”‘’…]+$/g, "")
+    .trim();
+}
 
 function esc(s) {
   const d = document.createElement("div");
@@ -93,6 +113,15 @@ function render() {
   const hideShotUntilReveal = mode === "en2zh";
   el.shot.style.display = hideShotUntilReveal && !state.revealed ? "none" : "";
 
+  // Cloze mode: the burned-in subtitle spoils the blank, so mask the bottom
+  // band until reveal. Other modes never show a spoiling subtitle.
+  el.mask.hidden = !(mode === "cloze" && card.image_url && !state.revealed);
+
+  // Typed guess appears only in the "recall the English" modes, before reveal.
+  const wantGuess = GUESS_MODES.has(mode) && !state.revealed;
+  el.guess.hidden = !wantGuess;
+  if (wantGuess) el.guessInput.focus();
+
   el.answer.hidden = !state.revealed;
   el.reveal.hidden = state.revealed;
 
@@ -101,10 +130,39 @@ function render() {
   el.next.disabled = state.i === state.cards.length - 1;
 }
 
+function clearGuess() {
+  el.guessInput.value = "";
+  el.verdict.hidden = true;
+  el.verdict.className = "verdict";
+  el.verdict.innerHTML = "";
+}
+
 function reveal() {
   if (state.revealed) return;
   state.revealed = true;
   render();
+}
+
+function submitGuess() {
+  const card = state.cards[state.i];
+  if (!card) return;
+  const raw = el.guessInput.value;
+  if (!normalizeAnswer(raw)) return; // empty — ignore, let them use 揭晓
+  const correct = normalizeAnswer(raw) === normalizeAnswer(card.expression);
+  el.verdict.hidden = false;
+  if (correct) {
+    el.verdict.className = "verdict ok";
+    el.verdict.textContent = "正确 ✓";
+  } else {
+    el.verdict.className = "verdict miss";
+    el.verdict.innerHTML =
+      "差一点～ 你写的是 <span class=\"yours\">" +
+      esc(raw.trim()) +
+      "</span>，正确答案是 <span class=\"right\">" +
+      esc(card.expression) +
+      "</span>";
+  }
+  reveal();
 }
 
 function go(delta) {
@@ -112,12 +170,14 @@ function go(delta) {
   if (n < 0 || n >= state.cards.length) return;
   state.i = n;
   state.revealed = false;
+  clearGuess();
   render();
 }
 
 function setMode(mode) {
   state.mode = mode;
   state.revealed = false;
+  clearGuess();
   document.querySelectorAll(".mode-btn").forEach((b) => {
     b.classList.toggle("is-active", b.dataset.mode === mode);
   });
@@ -128,10 +188,22 @@ function wire() {
   el.reveal.addEventListener("click", reveal);
   el.prev.addEventListener("click", () => go(-1));
   el.next.addEventListener("click", () => go(1));
+  el.guessSubmit.addEventListener("click", submitGuess);
   document.querySelectorAll(".mode-btn").forEach((b) => {
     b.addEventListener("click", () => setMode(b.dataset.mode));
   });
+  // Enter inside the input submits the guess; keep it out of the global handler
+  // so it doesn't also fire 揭晓.
+  el.guessInput.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      e.stopPropagation();
+      submitGuess();
+    }
+  });
   document.addEventListener("keydown", (e) => {
+    // Don't hijack typing while the guess box has focus.
+    if (document.activeElement === el.guessInput) return;
     if (e.key === "ArrowLeft") go(-1);
     else if (e.key === "ArrowRight") go(1);
     else if (e.key === " " || e.key === "Enter") {

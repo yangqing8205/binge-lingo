@@ -28,6 +28,7 @@
       <figure class="shot" id="shot">
         <img id="shot-img" alt="剧照" />
         <div id="shot-empty" class="shot-empty">无剧照</div>
+        <div id="subtitle-mask" class="subtitle-mask" hidden></div>
       </figure>
 
       <div class="body">
@@ -43,6 +44,22 @@
           <div class="answer-cn" id="a-chinese"></div>
           <div class="answer-context" id="a-context"></div>
         </div>
+
+        <!-- typed answer: recall the English expression -->
+        <div class="guess" id="guess" hidden>
+          <input
+            id="guess-input"
+            class="guess-input"
+            type="text"
+            autocomplete="off"
+            autocorrect="off"
+            autocapitalize="off"
+            spellcheck="false"
+            placeholder="打出你猜的答案，回车提交"
+          />
+          <button id="guess-submit" class="guess-submit">提交</button>
+        </div>
+        <div class="verdict" id="verdict" hidden></div>
 
         <button id="reveal" class="reveal">揭晓 <span class="hint">Space</span></button>
       </div>
