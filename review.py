@@ -7,7 +7,7 @@ already-flattened card JSON from /api/cards.
 """
 from __future__ import annotations
 
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, jsonify, redirect, request, send_from_directory
 
 from src import chat, config, matching, notion_reader
 
@@ -18,7 +18,22 @@ PORT = 5001
 
 @app.get("/")
 def index():
-    return send_from_directory("web", "index.html")
+    return redirect("/review")
+
+
+@app.get("/review")
+def page_review():
+    return send_from_directory("web", "review.html")
+
+
+@app.get("/chat")
+def page_chat():
+    return send_from_directory("web", "chat.html")
+
+
+@app.get("/export")
+def page_export():
+    return send_from_directory("web", "export.html")
 
 
 @app.get("/api/cards")

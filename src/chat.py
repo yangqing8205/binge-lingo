@@ -165,6 +165,8 @@ def list_characters() -> list[dict]:
                 "intro": c["intro"],
                 "color": c["color"],
                 "hidden": bool(c.get("hidden")),
+                # persona is needed by the /export page to build a portable prompt
+                "persona": c["persona"],
             }
         )
     return out
