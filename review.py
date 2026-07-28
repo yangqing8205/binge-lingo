@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from flask import Flask, jsonify, request, send_from_directory
 
-from src import config, matching, notion_reader
+from src import chat, config, matching, notion_reader
 
 app = Flask(__name__, static_folder="web", static_url_path="")
 
@@ -43,6 +43,55 @@ def api_check():
     expression = str(data.get("expression", ""))
     correct = matching.is_correct(guess, expression)
     return jsonify({"ok": True, "correct": correct})
+
+
+# ---- 对话练习 (roleplay conversation practice) ----
+
+@app.get("/api/characters")
+def api_characters():
+    return jsonify({"ok": True, "characters": chat.list_characters()})
+
+
+@app.post("/api/chat/start")
+def api_chat_start():
+    data = request.get_json(silent=True) or {}
+    character = str(data.get("character", ""))
+    try:
+        cards = notion_reader.fetch_cards()
+        expressions = [c["expression"] for c in cards if c.get("expression")]
+        result = chat.start_session(character, expressions)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception as exc:  # noqa: BLE001 — surface to the UI
+        return jsonify({"ok": False, "error": str(exc)}), 502
+    return jsonify({"ok": True, **result})
+
+
+@app.post("/api/chat")
+def api_chat():
+    data = request.get_json(silent=True) or {}
+    session_id = str(data.get("session_id", ""))
+    message = str(data.get("message", ""))
+    try:
+        result = chat.turn(session_id, message)
+    except KeyError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 404
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"ok": False, "error": str(exc)}), 502
+    return jsonify({"ok": True, **result})
+
+
+@app.post("/api/chat/end")
+def api_chat_end():
+    data = request.get_json(silent=True) or {}
+    session_id = str(data.get("session_id", ""))
+    try:
+        result = chat.end_session(session_id)
+    except KeyError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 404
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"ok": False, "error": str(exc)}), 502
+    return jsonify({"ok": True, **result})
 
 
 def main() -> None:

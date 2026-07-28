@@ -31,11 +31,17 @@
         </div>
       </div>
       <div class="episode-line" id="episode-line"></div>
+      <nav class="modes" id="modes">
+        <button class="mode-tab is-active" data-mode="review">复习档案</button>
+        <button class="mode-tab" data-mode="chat">对话练习</button>
+      </nav>
     </header>
 
     <main class="stage">
       <div id="notice" class="notice" hidden></div>
 
+      <!-- =================== REVIEW VIEW =================== -->
+      <div id="review-view">
       <!-- ===== the file card ===== -->
       <section id="card" class="filecard" hidden>
         <span class="filetab" id="filetab">TRANSFER TEST</span>
@@ -104,18 +110,69 @@
           </div>
         </div>
       </section>
-    </main>
 
-    <!-- ===== nav ===== -->
-    <footer class="nav" id="nav" hidden>
-      <button id="prev" class="nav-btn">← 上一张</button>
-      <div class="pips" id="pips" aria-hidden="true">
-        <span class="pip" data-layer="1"></span>
-        <span class="pip" data-layer="2"></span>
-        <span class="pip" data-layer="3"></span>
-      </div>
-      <button id="next" class="nav-btn">下一张 →</button>
-    </footer>
+      <!-- ===== review nav ===== -->
+      <footer class="nav" id="nav" hidden>
+        <button id="prev" class="nav-btn">← 上一张</button>
+        <div class="pips" id="pips" aria-hidden="true">
+          <span class="pip" data-layer="1"></span>
+          <span class="pip" data-layer="2"></span>
+          <span class="pip" data-layer="3"></span>
+        </div>
+        <button id="next" class="nav-btn">下一张 →</button>
+      </footer>
+      </div><!-- /review-view -->
+
+      <!-- =================== CHAT VIEW =================== -->
+      <div id="chat-view" hidden>
+
+        <!-- character picker -->
+        <section id="char-select" class="char-select">
+          <div class="char-select-head">选一个角色，开始口语陪练</div>
+          <div class="char-grid" id="char-grid"></div>
+        </section>
+
+        <!-- chat room -->
+        <section id="chat-room" class="chat-room" hidden>
+          <header class="chat-head">
+            <div class="chat-who">
+              <span class="chat-avatar" id="chat-avatar"></span>
+              <span class="chat-name" id="chat-name"></span>
+              <span class="online-dot" title="online"></span>
+            </div>
+            <button class="chat-back" id="chat-back">← 换角色</button>
+          </header>
+
+          <button class="targets-toggle" id="targets-toggle">
+            今日目标表达 <span id="targets-count"></span> ▾
+          </button>
+          <div class="targets-list" id="targets-list" hidden></div>
+
+          <div class="chat-log" id="chat-log"></div>
+
+          <div class="chat-inputbar" id="chat-inputbar">
+            <input
+              id="chat-input"
+              class="chat-input"
+              type="text"
+              autocomplete="off"
+              placeholder="用英语回复…"
+            />
+            <button id="chat-send" class="btn-submit">发送</button>
+          </div>
+          <button id="chat-end" class="chat-end">结束对话，看点评</button>
+
+          <!-- critique stamp card -->
+          <div class="critique" id="critique" hidden>
+            <div class="stamp-slot">
+              <div class="stamp gold" id="critique-stamp"></div>
+            </div>
+            <div class="critique-body" id="critique-body"></div>
+            <button id="critique-again" class="nav-btn">再练一次</button>
+          </div>
+        </section>
+      </div><!-- /chat-view -->
+    </main>
   </div>
 
   <script src="app.js"></script>

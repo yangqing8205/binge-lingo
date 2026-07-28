@@ -67,8 +67,13 @@ _TRAILING_PUNCT = ".,!?;:'\"“”‘’…、。！？，；："
 
 
 def normalize(text: str) -> str:
-    """Lowercase, collapse inner whitespace, trim, drop trailing punctuation."""
-    s = re.sub(r"\s+", " ", str(text or "")).strip().lower()
+    """Lowercase, collapse inner whitespace, trim, drop trailing punctuation.
+
+    Hyphens and slashes are treated as spaces so "over-the-top" and "over the
+    top" compare equal.
+    """
+    s = str(text or "").lower().replace("-", " ").replace("/", " ")
+    s = re.sub(r"\s+", " ", s).strip()
     return s.rstrip(_TRAILING_PUNCT).strip()
 
 
