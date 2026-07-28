@@ -54,6 +54,20 @@ Your job:
    read from the image — do NOT invent an example), and a difficulty rating.
    The difficulty MUST be exactly one of: 初级, 中级, 高级.
 
+6. Also write ONE brand-new `review_sentence` for spaced-repetition practice.
+   Requirements for this sentence:
+   - It must be a NEW sentence you compose — NOT the original line.
+   - Natural, idiomatic spoken English, the kind a native would actually say.
+   - Related to the same everyday/plot situation as the screenshot, so the
+     scene gives a hint, but it must stand on its own.
+   - The surrounding words must make the missing expression INFERABLE from
+     context by an advanced learner.
+   - Blank out the target expression by replacing it with exactly three
+     underscores: `___`. Put the blank where the expression naturally goes and
+     keep the rest of the sentence intact. Example, for "off your game":
+     "You've missed three shots in a row — you're really ___ today."
+   - Exactly one blank per sentence.
+
 Always report your result by calling the `report_expressions` tool.
 """
 
@@ -86,6 +100,12 @@ _TOOL = {
                             "type": "string",
                             "enum": ["初级", "中级", "高级"],
                         },
+                        "review_sentence": {
+                            "type": "string",
+                            "description": "A NEW spoken-English sentence for review "
+                            "practice, related to the scene, with the target "
+                            "expression replaced by exactly three underscores ___.",
+                        },
                     },
                     "required": [
                         "expression",
@@ -93,6 +113,7 @@ _TOOL = {
                         "scenario_zh",
                         "original_line",
                         "difficulty",
+                        "review_sentence",
                     ],
                 },
             },
@@ -109,7 +130,14 @@ def _encode_image(path: Path) -> tuple[str, str]:
     return mime, data
 
 
-_FIELD_KEYS = ("expression", "meaning_zh", "scenario_zh", "original_line", "difficulty")
+_FIELD_KEYS = (
+    "expression",
+    "meaning_zh",
+    "scenario_zh",
+    "original_line",
+    "difficulty",
+    "review_sentence",
+)
 
 
 def _extract_field(chunk: str, key: str, is_last: bool) -> str:
@@ -123,8 +151,8 @@ def _extract_field(chunk: str, key: str, is_last: bool) -> str:
     # Value ends where the next known key begins, else at the last brace.
     end = len(chunk)
     if not is_last:
-        nxt = re.search(r'"(?:expression|meaning_zh|scenario_zh|original_line|difficulty)"\s*:',
-                        chunk[start:])
+        keys = "|".join(_FIELD_KEYS)
+        nxt = re.search(rf'"(?:{keys})"\s*:', chunk[start:])
         if nxt:
             end = start + nxt.start()
     value = chunk[start:end].strip()
@@ -162,7 +190,8 @@ def _salvage_object(chunk: str) -> dict | None:
         "meaning_zh": _extract_field(chunk, "meaning_zh", is_last=False),
         "scenario_zh": _extract_field(chunk, "scenario_zh", is_last=False),
         "original_line": _extract_field(chunk, "original_line", is_last=False),
-        "difficulty": _extract_field(chunk, "difficulty", is_last=True),
+        "difficulty": _extract_field(chunk, "difficulty", is_last=False),
+        "review_sentence": _extract_field(chunk, "review_sentence", is_last=True),
     }
 
 
@@ -211,6 +240,7 @@ def _parse_payload(payload: dict) -> ScreenshotAnalysis:
                 scenario_zh=str(item.get("scenario_zh", "")).strip(),
                 original_line=str(item.get("original_line", "")).strip(),
                 difficulty=str(item.get("difficulty", "")).strip(),
+                review_sentence=str(item.get("review_sentence", "")).strip(),
             )
         )
     expressions = [e for e in expressions if e.expression]

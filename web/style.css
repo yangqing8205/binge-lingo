@@ -39,29 +39,16 @@ body {
 .brand-mark { font-weight: 700; font-size: 18px; letter-spacing: -.2px; }
 .brand-sub { color: var(--ink-faint); font-size: 14px; }
 
-.modes {
-  display: inline-flex;
-  background: var(--surface);
-  border: 1px solid var(--line);
+/* progress pips: how deep into the three layers we are */
+.layer-pips { display: inline-flex; gap: 7px; align-items: center; }
+.pip {
+  width: 9px;
+  height: 9px;
   border-radius: 999px;
-  padding: 4px;
-  gap: 2px;
+  background: var(--line);
+  transition: background .18s;
 }
-.mode-btn {
-  border: 0;
-  background: transparent;
-  color: var(--ink-soft);
-  font-size: 13px;
-  padding: 7px 14px;
-  border-radius: 999px;
-  cursor: pointer;
-  transition: background .15s, color .15s;
-}
-.mode-btn:hover { color: var(--ink); }
-.mode-btn.is-active {
-  background: var(--accent);
-  color: #fff;
-}
+.pip.is-on { background: var(--accent); }
 
 /* ---- stage ---- */
 .stage {
@@ -97,14 +84,18 @@ body {
   box-shadow: var(--shadow);
 }
 
+.body { padding: 24px 28px 28px; }
+
+/* screenshot only appears inside the revealed answer (layer 3) */
 .shot {
-  margin: 0;
+  margin: 0 0 16px;
   background: #0d0f12;
   aspect-ratio: 16 / 9;
   display: flex;
   align-items: center;
   justify-content: center;
-  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
 }
 .shot img {
   width: 100%;
@@ -112,31 +103,6 @@ body {
   object-fit: contain;
   display: block;
 }
-.shot-empty {
-  position: absolute;
-  color: #565c66;
-  font-size: 14px;
-}
-
-/* Cloze mode hides the burned-in subtitle so it can't spoil the blank.
-   Covers the bottom band where subtitles sit;画面上方 stays visible. */
-.subtitle-mask {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 25%;
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  background: linear-gradient(
-    to top,
-    rgba(13, 15, 18, .92) 0%,
-    rgba(13, 15, 18, .82) 55%,
-    rgba(13, 15, 18, 0) 100%
-  );
-}
-
-.body { padding: 24px 28px 28px; }
 
 .difficulty {
   display: inline-block;
@@ -149,6 +115,13 @@ body {
   min-height: 20px;
 }
 .difficulty:empty { display: none; }
+
+.layer-banner {
+  font-size: 13px;
+  color: var(--ink-faint);
+  margin-bottom: 12px;
+  letter-spacing: .2px;
+}
 
 .prompt {
   font-size: 26px;
@@ -193,6 +166,44 @@ body {
   line-height: 1.6;
 }
 .answer-context:empty { display: none; }
+.answer-structure {
+  margin-top: 12px;
+  font-size: 13px;
+  color: var(--accent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.answer-structure:empty { display: none; }
+
+/* ---- layer-2 hints ---- */
+.hints {
+  margin-top: 18px;
+  padding: 14px 16px;
+  background: var(--accent-soft);
+  border-radius: 12px;
+  animation: fade .18s ease;
+}
+.hint-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 15px;
+  line-height: 1.6;
+}
+.hint-row + .hint-row { margin-top: 8px; }
+.hint-tag {
+  flex: none;
+  font-size: 12px;
+  color: var(--accent);
+  background: #fff;
+  border: 1px solid #d3e0ff;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.hint-initials {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 1px;
+  color: var(--ink);
+}
 
 /* ---- typed guess ---- */
 .guess {

@@ -7,9 +7,9 @@ already-flattened card JSON from /api/cards.
 """
 from __future__ import annotations
 
-from flask import Flask, jsonify, send_from_directory
+from flask import Flask, jsonify, request, send_from_directory
 
-from src import config, notion_reader
+from src import config, matching, notion_reader
 
 app = Flask(__name__, static_folder="web", static_url_path="")
 
@@ -28,6 +28,21 @@ def api_cards():
     except Exception as exc:  # noqa: BLE001 — surface the reason to the UI
         return jsonify({"ok": False, "error": str(exc), "cards": []}), 502
     return jsonify({"ok": True, "count": len(cards), "cards": cards})
+
+
+@app.post("/api/check")
+def api_check():
+    """Judge a typed answer against the target expression, server-side.
+
+    Body: {"guess": "...", "expression": "..."}. Inflection-tolerant matching
+    (stemming + helper-word stripping) lives in src.matching so the browser
+    doesn't have to reason about English morphology.
+    """
+    data = request.get_json(silent=True) or {}
+    guess = str(data.get("guess", ""))
+    expression = str(data.get("expression", ""))
+    correct = matching.is_correct(guess, expression)
+    return jsonify({"ok": True, "correct": correct})
 
 
 def main() -> None:

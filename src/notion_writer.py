@@ -40,6 +40,30 @@ def _resolve_data_source_id() -> str:
     return _data_source_id
 
 
+_schema_checked = False
+
+
+def _ensure_review_sentence_property() -> None:
+    """Add the ReviewSentence rich_text property if the schema lacks it.
+
+    Notion rejects page creates that set an unknown property, so a fresh
+    database (created before this field existed) needs it added once. Idempotent
+    and cached per process.
+    """
+    global _schema_checked
+    if _schema_checked:
+        return
+    source_id = _resolve_data_source_id()
+    source = _client.data_sources.retrieve(source_id)
+    props = source.get("properties", {})
+    if "ReviewSentence" not in props:
+        _client.data_sources.update(
+            data_source_id=source_id,
+            properties={"ReviewSentence": {"rich_text": {}}},
+        )
+    _schema_checked = True
+
+
 def _rich_text(content: str) -> dict:
     return {"rich_text": [{"type": "text", "text": {"content": content[:2000]}}]}
 
@@ -67,6 +91,7 @@ def _properties(expr: Expression, screenshot_name: str) -> dict:
         "Context": _rich_text(expr.scenario_zh),
         "Difficulty": _rich_text(expr.difficulty),
         "Example": _rich_text(expr.original_line),
+        "ReviewSentence": _rich_text(expr.review_sentence),
         # Source left empty on purpose — filled in manually.
         "Screenshot": _rich_text(screenshot_name),
     }
@@ -74,6 +99,7 @@ def _properties(expr: Expression, screenshot_name: str) -> dict:
 
 def write_entry(analysis: ScreenshotAnalysis, screenshot_path: Path) -> list[str]:
     """Create one row per expression. Returns the created page URLs."""
+    _ensure_review_sentence_property()
     parent = {"type": "data_source_id", "data_source_id": _resolve_data_source_id()}
     urls: list[str] = []
 

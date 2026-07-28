@@ -22,7 +22,7 @@ import re
 import httpx
 from notion_client import Client
 
-from . import config
+from . import config, matching
 
 _NOTION_VERSION = "2025-09-03"
 
@@ -103,11 +103,43 @@ def _build_cloze(expression: str, example: str) -> tuple[str, bool]:
     return line, False
 
 
+def _build_review_prompt(
+    review_sentence: str, expression: str, example: str
+) -> tuple[str, str]:
+    """Decide what the learner sees at layer 1 and how to answer it.
+
+    Returns (prompt_text, prompt_kind) where kind is:
+      * "cloze"  — a sentence with a ＿＿＿ blank to fill in
+      * "zh2en"  — no usable sentence to blank, so recall from Chinese instead
+
+    Preference order per the design's fallback rules:
+      1. ReviewSentence containing ___  → swap ___ for the display blank.
+      2. ReviewSentence with no ___      → can't blank it, degrade to zh2en.
+      3. No ReviewSentence               → blank the expression out of Example.
+      4. Neither works                   → zh2en.
+    """
+    rs = (review_sentence or "").strip()
+    if rs:
+        if "___" in rs:
+            # Collapse any run of 3+ underscores into one display blank.
+            return re.sub(r"_{3,}", _BLANK, rs), "cloze"
+        return "", "zh2en"
+
+    clozed, ok = _build_cloze(expression, example)
+    if ok:
+        return clozed, "cloze"
+    return "", "zh2en"
+
+
 def _page_to_card(page: dict) -> dict:
     props = page.get("properties", {})
     expression = _plain_text(props.get("Expression"))
     example = _plain_text(props.get("Example"))
-    cloze_text, cloze_ok = _build_cloze(expression, example)
+    review_sentence = _plain_text(props.get("ReviewSentence"))
+
+    review_prompt, review_kind = _build_review_prompt(
+        review_sentence, expression, example
+    )
     return {
         "id": page.get("id", ""),
         "expression": expression,
@@ -116,8 +148,13 @@ def _page_to_card(page: dict) -> dict:
         "example": example,
         "difficulty": _plain_text(props.get("Difficulty")),
         "image_url": _first_image_url(page.get("id", "")),
-        "cloze_text": cloze_text,
-        "cloze_ok": cloze_ok,
+        # Layer 1: the new-context challenge.
+        "review_prompt": review_prompt,
+        "review_kind": review_kind,
+        # Layer 2 hints (generated server-side).
+        "initials_hint": matching.initials_hint(expression),
+        # Layer 3 extras.
+        "common_structure": matching.common_structure(expression, example),
     }
 
 
