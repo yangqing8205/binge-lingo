@@ -115,3 +115,12 @@ def write_entry(analysis: ScreenshotAnalysis, screenshot_path: Path) -> list[str
         urls.append(page.get("url", page.get("id", "")))
 
     return urls
+
+
+def update_review_sentence(page_id: str, sentence: str) -> None:
+    """Set the ReviewSentence property on an existing page (backfill path)."""
+    _ensure_review_sentence_property()
+    _client.pages.update(
+        page_id=page_id,
+        properties={"ReviewSentence": _rich_text(sentence)},
+    )

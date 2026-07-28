@@ -1,15 +1,17 @@
 "use strict";
 
-// Three-layer progressive review:
-//   layer 1 — new-context cloze sentence, no hints, type the answer
-//   layer 2 — after a wrong answer: semantic (Chinese) + initial-letter hints, retry
-//   layer 3 — after two wrong answers: full reveal (screenshot, original line, …)
-// A correct answer at any layer jumps straight to the reveal.
+// Three-layer progressive review over a TV-archive UI.
+//   layer 1 — new-context mini-scenario, no hints, type the answer
+//   layer 2 — after a miss: Chinese meaning + first-letter hint, retry
+//   layer 3 — after a second miss (or skip): full "original evidence" reveal
+// A correct answer stamps COLD RECALL (layer 1) or RECALLED WITH A HINT (layer 2)
+// and reveals; running out stamps REVEALED.
 const state = {
   cards: [],
   i: 0,
-  layer: 1,      // 1 | 2 | 3
+  layer: 1,
   revealed: false,
+  outcome: null, // "cold" | "hint" | "revealed"
 };
 
 const $ = (id) => document.getElementById(id);
@@ -17,29 +19,41 @@ const el = {
   notice: $("notice"),
   card: $("card"),
   nav: $("nav"),
+  counter: $("counter"),
+  streak: $("streak"),
+  episodeLine: $("episode-line"),
+  filetab: $("filetab"),
   difficulty: $("difficulty"),
-  layerBanner: $("layer-banner"),
   prompt: $("prompt"),
-  hints: $("hints"),
+  hintblock: $("hintblock"),
   hintMeaning: $("hint-meaning"),
   hintInitials: $("hint-initials"),
-  guess: $("guess"),
+  nudge: $("nudge"),
+  answerbar: $("answerbar"),
   guessInput: $("guess-input"),
   guessSubmit: $("guess-submit"),
-  verdict: $("verdict"),
-  answer: $("answer"),
-  shot: $("shot"),
+  skip: $("skip"),
+  stampSlot: $("stamp-slot"),
+  stamp: $("stamp"),
+  stampNote: $("stamp-note"),
+  evidence: $("evidence"),
+  photo: $("photo"),
   shotImg: $("shot-img"),
-  aExpr: $("a-expression"),
-  aLine: $("a-line"),
-  aCn: $("a-chinese"),
-  aContext: $("a-context"),
-  aStructure: $("a-structure"),
-  reveal: $("reveal"),
+  photoCaption: $("photo-caption"),
+  evLine: $("ev-line"),
+  evAnswer: $("ev-answer"),
+  evCn: $("ev-cn"),
+  evContext: $("ev-context"),
+  evStructure: $("ev-structure"),
   prev: $("prev"),
   next: $("next"),
-  counter: $("counter"),
-  pips: $("layer-pips"),
+  pips: $("pips"),
+};
+
+const STAMPS = {
+  cold: { cls: "gold", text: "COLD RECALL ✓", note: "You recognized it in a brand new context." },
+  hint: { cls: "", text: "RECALLED WITH A HINT", note: "You got it with a little help." },
+  revealed: { cls: "wine", text: "REVEALED", note: "Review this one again soon." },
 };
 
 function esc(s) {
@@ -56,12 +70,38 @@ function showNotice(msg, isError) {
   el.nav.hidden = true;
 }
 
+// ----- daily streak (local only) -----
+function updateStreak() {
+  const today = new Date().toISOString().slice(0, 10);
+  let day = 1;
+  try {
+    const last = localStorage.getItem("bl_last_day");
+    const count = Number(localStorage.getItem("bl_streak") || "0");
+    if (last === today) {
+      day = count || 1;
+    } else {
+      const y = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+      day = last === y ? count + 1 : 1;
+      localStorage.setItem("bl_last_day", today);
+      localStorage.setItem("bl_streak", String(day));
+    }
+  } catch (_) {
+    day = 1;
+  }
+  el.streak.textContent = "DAY " + day;
+}
+
+function episodeText() {
+  const n = state.cards.length;
+  const src = (state.cards[state.i] && state.cards[state.i].source || "").trim();
+  if (src) return src + " · " + n + " expressions due today";
+  return "REVIEW SESSION · " + n + " expressions";
+}
+
 function clozeHTML(text) {
   return esc(text).replace(/＿＿＿/g, '<span class="blank">＿＿＿</span>');
 }
 
-// Render the layer-1 prompt. In "zh2en" fallback (no blankable sentence) we
-// show the Chinese meaning and ask the learner to recall the English.
 function renderPrompt(card) {
   if (card.review_kind === "cloze" && card.review_prompt) {
     el.prompt.innerHTML = clozeHTML(card.review_prompt);
@@ -73,30 +113,25 @@ function renderPrompt(card) {
 
 function setPips() {
   el.pips.querySelectorAll(".pip").forEach((p) => {
-    const n = Number(p.dataset.layer);
-    p.classList.toggle("is-on", n <= state.layer);
+    p.classList.toggle("is-on", Number(p.dataset.layer) <= state.layer);
   });
 }
 
-const BANNERS = {
-  1: "新语境挑战 · 看句子填空",
-  2: "再试一次 · 给你两个提示",
-  3: "原始记忆唤醒 · 完整答案",
-};
-
-function renderReveal(card) {
+function renderEvidence(card) {
   if (card.image_url) {
     el.shotImg.src = card.image_url;
-    el.shot.hidden = false;
+    el.photo.hidden = false;
+    const cap = [card.source, card.difficulty].filter(Boolean).join("  ·  ");
+    el.photoCaption.textContent = cap || "FROM YOUR ARCHIVES";
   } else {
     el.shotImg.removeAttribute("src");
-    el.shot.hidden = true;
+    el.photo.hidden = true;
   }
-  el.aExpr.textContent = card.expression || "";
-  el.aLine.textContent = card.example || "";
-  el.aCn.textContent = card.chinese || "";
-  el.aContext.textContent = card.context || "";
-  el.aStructure.textContent = card.common_structure
+  el.evLine.textContent = card.example || "";
+  el.evAnswer.textContent = card.expression || "";
+  el.evCn.textContent = card.chinese || "";
+  el.evContext.textContent = card.context || "";
+  el.evStructure.textContent = card.common_structure
     ? "常见结构：" + card.common_structure
     : "";
 }
@@ -106,111 +141,102 @@ function render() {
   if (!card) return;
 
   el.difficulty.textContent = card.difficulty || "";
+  el.episodeLine.textContent = episodeText();
   renderPrompt(card);
   setPips();
 
+  // file tab label reflects the layer
+  el.filetab.textContent =
+    state.layer === 1 ? "TRANSFER TEST" : state.layer === 2 ? "HINT ROUND" : "CASE FILE";
+
   const showHints = state.layer >= 2 && !state.revealed;
-  el.hints.hidden = !showHints;
+  el.hintblock.hidden = !showHints;
   if (showHints) {
     el.hintMeaning.textContent = card.chinese || "（暂无中文释义）";
     el.hintInitials.textContent = card.initials_hint || "";
   }
 
-  // Input stays available until the card is revealed (layers 1 and 2).
   const showGuess = !state.revealed && state.layer <= 2;
-  el.guess.hidden = !showGuess;
+  el.answerbar.hidden = !showGuess;
+  el.skip.hidden = !showGuess;
+  el.skip.textContent = state.layer >= 2 ? "我放弃了（看答案）" : "跳过（直接看答案）";
   if (showGuess) el.guessInput.focus();
 
-  el.answer.hidden = !state.revealed;
-  if (state.revealed) renderReveal(card);
-
-  el.layerBanner.textContent = state.revealed
-    ? BANNERS[3]
-    : BANNERS[state.layer];
-
-  el.reveal.hidden = state.revealed;
-  el.reveal.textContent = state.layer >= 2 ? "放弃 · 看答案" : "直接揭晓";
+  // stamp + evidence only after reveal
+  el.stampSlot.hidden = !state.revealed;
+  el.evidence.hidden = !state.revealed;
+  if (state.revealed) {
+    const s = STAMPS[state.outcome] || STAMPS.revealed;
+    el.stamp.className = "stamp " + s.cls;
+    el.stamp.textContent = s.text;
+    el.stampNote.textContent = s.note;
+    renderEvidence(card);
+  }
 
   el.counter.textContent = state.i + 1 + " / " + state.cards.length;
   el.prev.disabled = state.i === 0;
   el.next.disabled = state.i === state.cards.length - 1;
 }
 
-function clearVerdict() {
-  el.verdict.hidden = true;
-  el.verdict.className = "verdict";
-  el.verdict.innerHTML = "";
-}
-
 function resetCard() {
   state.layer = 1;
   state.revealed = false;
+  state.outcome = null;
   el.guessInput.value = "";
-  clearVerdict();
+  el.nudge.hidden = true;
+  el.nudge.textContent = "";
 }
 
-function reveal() {
-  if (state.revealed) return;
+function revealWith(outcome) {
   state.revealed = true;
+  state.outcome = outcome;
   render();
 }
 
-function showVerdict(kind, html) {
-  el.verdict.hidden = false;
-  el.verdict.className = "verdict " + kind;
-  el.verdict.innerHTML = html;
+async function judge(guess, expression) {
+  const res = await fetch("/api/check", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ guess, expression }),
+  });
+  const data = await res.json();
+  return !!data.correct;
 }
 
 async function submitGuess() {
   const card = state.cards[state.i];
   if (!card || state.revealed) return;
   const raw = el.guessInput.value;
-  if (!raw.trim()) return; // empty — let them use 揭晓 instead
+  if (!raw.trim()) return;
 
   let correct = false;
   try {
-    const res = await fetch("/api/check", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ guess: raw, expression: card.expression }),
-    });
-    const data = await res.json();
-    correct = !!data.correct;
+    correct = await judge(raw, card.expression);
   } catch (err) {
-    showVerdict("miss", "判分服务连接失败：" + esc(err.message));
+    el.nudge.hidden = false;
+    el.nudge.textContent = "判分服务连接失败：" + err.message;
     return;
   }
 
   if (correct) {
-    const msg = state.layer >= 2 ? "答对了！✓" : "正确！✓";
-    showVerdict("ok", msg);
-    reveal();
+    revealWith(state.layer >= 2 ? "hint" : "cold");
     return;
   }
 
-  // Wrong: advance a layer. First miss → hints; second miss → full reveal.
   if (state.layer === 1) {
     state.layer = 2;
-    showVerdict(
-      "miss",
-      "还差一点～ 你写的是 <span class=\"yours\">" +
-        esc(raw.trim()) +
-        "</span>。看看下面的提示，再试一次。"
-    );
+    el.nudge.hidden = false;
+    el.nudge.textContent = "Not quite — try again?";
     el.guessInput.value = "";
     render();
   } else {
-    showVerdict(
-      "miss",
-      "你写的是 <span class=\"yours\">" +
-        esc(raw.trim()) +
-        "</span>，正确答案是 <span class=\"right\">" +
-        esc(card.expression) +
-        "</span>。别灰心，多看几遍就记住了。"
-    );
-    state.layer = 3;
-    reveal();
+    revealWith("revealed");
   }
+}
+
+function skip() {
+  if (state.revealed) return;
+  revealWith("revealed");
 }
 
 function go(delta) {
@@ -222,10 +248,10 @@ function go(delta) {
 }
 
 function wire() {
-  el.reveal.addEventListener("click", reveal);
+  el.guessSubmit.addEventListener("click", submitGuess);
+  el.skip.addEventListener("click", skip);
   el.prev.addEventListener("click", () => go(-1));
   el.next.addEventListener("click", () => go(1));
-  el.guessSubmit.addEventListener("click", submitGuess);
   el.guessInput.addEventListener("keydown", (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
@@ -237,10 +263,6 @@ function wire() {
     if (document.activeElement === el.guessInput) return;
     if (e.key === "ArrowLeft") go(-1);
     else if (e.key === "ArrowRight") go(1);
-    else if (e.key === " " || e.key === "Enter") {
-      e.preventDefault();
-      reveal();
-    }
   });
 }
 
@@ -261,6 +283,7 @@ async function load() {
     el.notice.hidden = true;
     el.card.hidden = false;
     el.nav.hidden = false;
+    updateStreak();
     resetCard();
     render();
   } catch (err) {

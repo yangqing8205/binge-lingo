@@ -61,7 +61,7 @@ _IRREGULAR = {
 }
 
 # Small words that stay whole (not blanked) in the initial-letter hint.
-_KEEP_WHOLE = {"a", "an", "the", "by", "in", "on", "of", "at", "to", "up", "off"}
+_KEEP_WHOLE = {"a", "an", "the", "by", "in", "on", "of", "at", "to", "for", "up", "off"}
 
 _TRAILING_PUNCT = ".,!?;:'\"“”‘’…、。！？，；："
 

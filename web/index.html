@@ -3,81 +3,120 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>BingeLingo · 复习</title>
+  <title>BingeLingo · Episode Files</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet"
+  />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand">
-      <span class="brand-mark">BingeLingo</span>
-      <span class="brand-sub">复习</span>
-    </div>
-    <div class="layer-pips" id="layer-pips" aria-hidden="true">
-      <span class="pip" data-layer="1"></span>
-      <span class="pip" data-layer="2"></span>
-      <span class="pip" data-layer="3"></span>
-    </div>
-  </header>
+  <!-- faint film-perforation strips down each edge (decoration) -->
+  <div class="perf perf-left" aria-hidden="true"></div>
+  <div class="perf perf-right" aria-hidden="true"></div>
 
-  <main class="stage">
-    <div id="notice" class="notice" hidden></div>
-
-    <section id="card" class="card" hidden>
-      <div class="body">
-        <div class="difficulty" id="difficulty"></div>
-
-        <!-- layer banner: tells the learner where they are -->
-        <div class="layer-banner" id="layer-banner"></div>
-
-        <!-- the challenge sentence / prompt -->
-        <div class="prompt" id="prompt"></div>
-
-        <!-- layer 2 hints -->
-        <div class="hints" id="hints" hidden>
-          <div class="hint-row"><span class="hint-tag">含义</span><span id="hint-meaning"></span></div>
-          <div class="hint-row"><span class="hint-tag">首字母</span><span class="hint-initials" id="hint-initials"></span></div>
+  <div class="wrap">
+    <!-- ===== episode archive header ===== -->
+    <header class="archive-head">
+      <div class="head-top">
+        <div class="brand">
+          <span class="brand-mark">BingeLingo</span>
+          <span class="brand-sub">MY EPISODE FILES</span>
         </div>
-
-        <!-- typed answer -->
-        <div class="guess" id="guess" hidden>
-          <input
-            id="guess-input"
-            class="guess-input"
-            type="text"
-            autocomplete="off"
-            autocorrect="off"
-            autocapitalize="off"
-            spellcheck="false"
-            placeholder="打出你猜的答案，回车提交"
-          />
-          <button id="guess-submit" class="guess-submit">提交</button>
+        <div class="head-meta">
+          <span class="counter" id="counter">– / –</span>
+          <span class="streak" id="streak">DAY 1</span>
         </div>
-
-        <!-- verdict after a submission -->
-        <div class="verdict" id="verdict" hidden></div>
-
-        <!-- full answer reveal (layer 3 / correct) -->
-        <div class="answer" id="answer" hidden>
-          <figure class="shot" id="shot" hidden>
-            <img id="shot-img" alt="剧照" />
-          </figure>
-          <div class="answer-expression" id="a-expression"></div>
-          <div class="answer-line" id="a-line"></div>
-          <div class="answer-cn" id="a-chinese"></div>
-          <div class="answer-context" id="a-context"></div>
-          <div class="answer-structure" id="a-structure"></div>
-        </div>
-
-        <button id="reveal" class="reveal">直接揭晓 <span class="hint">Space</span></button>
       </div>
-    </section>
-  </main>
+      <div class="episode-line" id="episode-line"></div>
+    </header>
 
-  <footer class="nav" id="nav" hidden>
-    <button id="prev" class="nav-btn">← 上一张</button>
-    <span id="counter" class="counter">0 / 0</span>
-    <button id="next" class="nav-btn">下一张 →</button>
-  </footer>
+    <main class="stage">
+      <div id="notice" class="notice" hidden></div>
+
+      <!-- ===== the file card ===== -->
+      <section id="card" class="filecard" hidden>
+        <span class="filetab" id="filetab">TRANSFER TEST</span>
+        <span class="difficulty" id="difficulty"></span>
+
+        <div class="filebody">
+          <!-- LAYER 1/2 prompt: the new-context mini-scenario -->
+          <div class="prompt" id="prompt"></div>
+
+          <!-- LAYER 2 hint block -->
+          <div class="hintblock" id="hintblock" hidden>
+            <span class="hint-label">HINT</span>
+            <div class="hint-row">
+              <span class="hint-key">语义</span>
+              <span id="hint-meaning"></span>
+            </div>
+            <div class="hint-row">
+              <span class="hint-key">首字母</span>
+              <span class="hint-initials" id="hint-initials"></span>
+            </div>
+          </div>
+
+          <!-- gentle wrong-answer nudge -->
+          <div class="nudge" id="nudge" hidden></div>
+
+          <!-- answer input -->
+          <div class="answerbar" id="answerbar">
+            <input
+              id="guess-input"
+              class="guess-input"
+              type="text"
+              autocomplete="off"
+              autocorrect="off"
+              autocapitalize="off"
+              spellcheck="false"
+              placeholder="Type your answer..."
+            />
+            <button id="guess-submit" class="btn-submit">提交</button>
+          </div>
+          <button id="skip" class="skip">跳过（直接看答案）</button>
+
+          <!-- stamp feedback -->
+          <div class="stamp-slot" id="stamp-slot" hidden>
+            <div class="stamp" id="stamp"></div>
+            <div class="stamp-note" id="stamp-note"></div>
+          </div>
+
+          <!-- LAYER 3 reveal: original evidence -->
+          <div class="evidence" id="evidence" hidden>
+            <div class="evidence-head">ORIGINAL EVIDENCE</div>
+
+            <figure class="photo" id="photo" hidden>
+              <span class="tape" aria-hidden="true"></span>
+              <img id="shot-img" alt="剧照" />
+              <figcaption id="photo-caption"></figcaption>
+            </figure>
+
+            <div class="ev-grid">
+              <div class="ev-line" id="ev-line"></div>
+              <div class="ev-answer" id="ev-answer"></div>
+              <div class="ev-cn" id="ev-cn"></div>
+              <div class="ev-context" id="ev-context"></div>
+              <div class="ev-structure" id="ev-structure"></div>
+            </div>
+            <div class="ev-foot">You saved this expression from this scene.</div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- ===== nav ===== -->
+    <footer class="nav" id="nav" hidden>
+      <button id="prev" class="nav-btn">← 上一张</button>
+      <div class="pips" id="pips" aria-hidden="true">
+        <span class="pip" data-layer="1"></span>
+        <span class="pip" data-layer="2"></span>
+        <span class="pip" data-layer="3"></span>
+      </div>
+      <button id="next" class="nav-btn">下一张 →</button>
+    </footer>
+  </div>
 
   <script src="app.js"></script>
 </body>

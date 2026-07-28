@@ -147,7 +147,10 @@ def _page_to_card(page: dict) -> dict:
         "context": _plain_text(props.get("Context")),
         "example": example,
         "difficulty": _plain_text(props.get("Difficulty")),
+        "source": _plain_text(props.get("Source")),
         "image_url": _first_image_url(page.get("id", "")),
+        # Raw stored sentence (empty on old cards) — used by the backfill script.
+        "review_sentence": review_sentence,
         # Layer 1: the new-context challenge.
         "review_prompt": review_prompt,
         "review_kind": review_kind,

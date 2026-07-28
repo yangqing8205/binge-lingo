@@ -55,18 +55,23 @@ Your job:
    The difficulty MUST be exactly one of: 初级, 中级, 高级.
 
 6. Also write ONE brand-new `review_sentence` for spaced-repetition practice.
-   Requirements for this sentence:
-   - It must be a NEW sentence you compose — NOT the original line.
-   - Natural, idiomatic spoken English, the kind a native would actually say.
-   - Related to the same everyday/plot situation as the screenshot, so the
-     scene gives a hint, but it must stand on its own.
-   - The surrounding words must make the missing expression INFERABLE from
-     context by an advanced learner.
-   - Blank out the target expression by replacing it with exactly three
-     underscores: `___`. Put the blank where the expression naturally goes and
-     keep the rest of the sentence intact. Example, for "off your game":
-     "You've missed three shots in a row — you're really ___ today."
-   - Exactly one blank per sentence.
+   Requirements:
+   - Make it a MINI-SCENARIO: 2-3 short sentences that together form a tiny
+     spoken situation — a snippet of dialogue or a little story — NOT a single
+     isolated sentence. It must read like real conversational English.
+   - Compose it fresh. Do NOT copy or lightly reword the original line.
+   - Prefer the same kind of everyday situation as the screenshot (you have seen
+     the frame), but if the scene isn't clear, invent a natural daily-life
+     scenario. It must stand on its own without the image.
+   - CRITICAL: the surrounding sentences must give enough semantic clues that an
+     advanced learner can INFER the blanked expression from context alone.
+   - Difficulty: everyday spoken register, just slightly challenging — the kind
+     of thing a native speaker would actually say. Idiomatic and natural.
+   - Replace the target expression with exactly three underscores `___`, exactly
+     ONE blank in the whole scenario, placed where the expression naturally goes.
+     Example, for "off your game":
+     "You've missed three easy shots in a row today. What's going on — you're
+     usually so sharp out there. Are you feeling okay, or are you just ___?"
 
 Always report your result by calling the `report_expressions` tool.
 """
@@ -284,3 +289,93 @@ def analyze_screenshot(path: Path) -> ScreenshotAnalysis:
         if block.type == "tool_use" and block.name == "report_expressions":
             return _parse_payload(block.input)
     return ScreenshotAnalysis()
+
+
+_REVIEW_SYSTEM_PROMPT = """\
+You help an ADVANCED Chinese learner of English review expressions they saved
+while watching TV. Given ONE target expression plus context about where it came
+from, write ONE brand-new practice MINI-SCENARIO.
+
+Requirements:
+- Write 2-3 short sentences that together form a tiny spoken situation — a
+  snippet of dialogue or a little story — NOT a single isolated sentence. It
+  must read like real conversational English.
+- Compose it fresh. Do NOT copy or lightly reword the original line.
+- Set it in the same kind of everyday situation as the original context if you
+  can infer one; otherwise invent a natural daily-life scenario. It must stand
+  on its own.
+- CRITICAL: the surrounding sentences must give enough semantic clues that an
+  advanced learner can INFER the blanked expression from context alone.
+- Difficulty: everyday spoken register, just slightly challenging — the kind of
+  thing a native speaker would actually say. Idiomatic and natural.
+- Replace the target expression with exactly three underscores `___`, exactly
+  ONE blank in the whole scenario, placed where the expression naturally goes.
+  Example, for "off your game":
+  "You've missed three easy shots in a row today. What's going on — you're
+  usually so sharp. Are you feeling okay, or are you just ___?"
+
+Always report your result by calling the `report_review_sentence` tool.
+"""
+
+_REVIEW_TOOL = {
+    "name": "report_review_sentence",
+    "description": "Report the new review practice sentence for the expression.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "review_sentence": {
+                "type": "string",
+                "description": "A NEW spoken-English sentence with the target "
+                "expression replaced by exactly three underscores ___.",
+            },
+        },
+        "required": ["review_sentence"],
+    },
+}
+
+
+def generate_review_sentence(
+    expression: str,
+    context: str = "",
+    chinese: str = "",
+    example: str = "",
+) -> str:
+    """Generate a fresh cloze review sentence from an expression's stored fields.
+
+    Text-only sibling of `analyze_screenshot` for backfilling old cards. Returns
+    the sentence (with a `___` blank) or "" if the model didn't produce a usable
+    one — the caller decides whether to skip.
+    """
+    expr = (expression or "").strip()
+    if not expr:
+        return ""
+
+    lines = [f"Target expression: {expr}"]
+    if chinese.strip():
+        lines.append(f"Chinese meaning: {chinese.strip()}")
+    if context.strip():
+        lines.append(f"Usage note / scenario (Chinese): {context.strip()}")
+    if example.strip():
+        lines.append(
+            f"Original line it appeared in (do NOT reuse this verbatim): "
+            f"{example.strip()}"
+        )
+    lines.append(
+        "Write one new practice sentence with the expression blanked as ___."
+    )
+    prompt = "\n".join(lines)
+
+    message = _client.messages.create(
+        model=config.API_MODEL,
+        max_tokens=512,
+        temperature=0.7,
+        system=_REVIEW_SYSTEM_PROMPT,
+        tools=[_REVIEW_TOOL],
+        tool_choice={"type": "tool", "name": "report_review_sentence"},
+        messages=[{"role": "user", "content": [{"type": "text", "text": prompt}]}],
+    )
+    for block in message.content:
+        if block.type == "tool_use" and block.name == "report_review_sentence":
+            sentence = str(block.input.get("review_sentence", "")).strip()
+            return sentence if "___" in sentence else ""
+    return ""
