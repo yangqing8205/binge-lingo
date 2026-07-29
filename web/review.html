@@ -7,108 +7,118 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
-    href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+    href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Oswald:wght@400;500;600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
     rel="stylesheet"
   />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div class="perf perf-left" aria-hidden="true"></div>
-  <div class="perf perf-right" aria-hidden="true"></div>
-
-  <div class="wrap">
-    <header class="archive-head">
-      <div class="head-top">
-        <div class="brand">
-          <span class="brand-mark">BingeLingo</span>
-          <span class="brand-sub">MY EPISODE FILES</span>
-        </div>
-        <div class="head-meta">
-          <span class="counter" id="counter">– / –</span>
-          <span class="streak" id="streak">DAY 1</span>
-        </div>
+  <header class="topbar">
+    <div class="topbar__inner">
+      <div class="brand">
+        <span class="brand-mark">BingeLingo</span>
+        <span class="brand-sub">The Archive</span>
       </div>
-      <nav class="nav-tabs">
-        <a href="/review">复习做题</a>
-        <a href="/chat">对话练习</a>
-        <a href="/export">带走练习</a>
+      <div class="topbar__meta">
+        <span class="counter" id="counter"></span>
+        <span class="streak" id="streak">DAY 1</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="desk">
+    <div class="folder">
+      <div class="folder__fastener top" aria-hidden="true">
+        <span class="hole"></span><span class="hole"></span>
+      </div>
+
+      <div class="folder__body">
+        <div class="case-head">
+          <div>
+            <span class="case-kicker" id="case-kicker">Transfer Test</span>
+            <h1 class="case-title">复习做题</h1>
+          </div>
+          <div class="episode-line" id="episode-line"></div>
+        </div>
+
+        <main class="stage">
+          <div id="notice" class="notice" hidden></div>
+
+          <section id="card" class="filebody" hidden>
+            <span class="difficulty" id="difficulty"></span>
+
+            <div class="prompt" id="prompt"></div>
+
+            <div class="hintblock" id="hintblock" hidden>
+              <span class="hint-label">HINT</span>
+              <div class="hint-row">
+                <span class="hint-key">语义</span>
+                <span id="hint-meaning"></span>
+              </div>
+              <div class="hint-row">
+                <span class="hint-key">首字母</span>
+                <span class="hint-initials" id="hint-initials"></span>
+              </div>
+            </div>
+
+            <div class="nudge" id="nudge" hidden></div>
+
+            <div class="answerbar" id="answerbar">
+              <input
+                id="guess-input"
+                class="guess-input"
+                type="text"
+                autocomplete="off"
+                autocorrect="off"
+                autocapitalize="off"
+                spellcheck="false"
+                placeholder="Type your answer..."
+              />
+              <button id="guess-submit" class="btn-submit">提交</button>
+            </div>
+            <button id="skip" class="skip">跳过（直接看答案）</button>
+
+            <div class="stamp-slot" id="stamp-slot" hidden>
+              <div class="stamp" id="stamp"></div>
+              <div class="stamp-note" id="stamp-note"></div>
+            </div>
+
+            <div class="evidence" id="evidence" hidden>
+              <div class="evidence-head">Original Evidence</div>
+              <figure class="photo" id="photo" hidden>
+                <span class="tape" aria-hidden="true"></span>
+                <img id="shot-img" alt="剧照" />
+                <figcaption id="photo-caption"></figcaption>
+              </figure>
+              <div class="ev-grid">
+                <div class="ev-line" id="ev-line"></div>
+                <div class="ev-answer" id="ev-answer"></div>
+                <div class="ev-cn" id="ev-cn"></div>
+                <div class="ev-context" id="ev-context"></div>
+                <div class="ev-structure" id="ev-structure"></div>
+              </div>
+              <div class="ev-foot">You saved this expression from this scene.</div>
+            </div>
+
+            <footer class="nav" id="nav">
+              <button id="prev" class="nav-btn">← 上一张</button>
+              <div class="pips" id="pips" aria-hidden="true">
+                <span class="pip" data-layer="1"></span>
+                <span class="pip" data-layer="2"></span>
+                <span class="pip" data-layer="3"></span>
+              </div>
+              <button id="next" class="nav-btn">下一张 →</button>
+            </footer>
+          </section>
+        </main>
+      </div>
+
+      <nav class="folder-tabs">
+        <a class="folder-tab" href="/review"><span>复习做题</span></a>
+        <a class="folder-tab" href="/chat"><span>对话练习</span></a>
+        <a class="folder-tab" href="/export"><span>Practice to Go</span></a>
       </nav>
-      <div class="episode-line" id="episode-line"></div>
-    </header>
-
-    <main class="stage">
-      <div id="notice" class="notice" hidden></div>
-
-      <section id="card" class="filecard" hidden>
-        <span class="filetab" id="filetab">TRANSFER TEST</span>
-        <span class="difficulty" id="difficulty"></span>
-
-        <div class="filebody">
-          <div class="prompt" id="prompt"></div>
-
-          <div class="hintblock" id="hintblock" hidden>
-            <span class="hint-label">HINT</span>
-            <div class="hint-row">
-              <span class="hint-key">语义</span>
-              <span id="hint-meaning"></span>
-            </div>
-            <div class="hint-row">
-              <span class="hint-key">首字母</span>
-              <span class="hint-initials" id="hint-initials"></span>
-            </div>
-          </div>
-
-          <div class="nudge" id="nudge" hidden></div>
-
-          <div class="answerbar" id="answerbar">
-            <input
-              id="guess-input"
-              class="guess-input"
-              type="text"
-              autocomplete="off"
-              autocorrect="off"
-              autocapitalize="off"
-              spellcheck="false"
-              placeholder="Type your answer..."
-            />
-            <button id="guess-submit" class="btn-submit">提交</button>
-          </div>
-          <button id="skip" class="skip">跳过（直接看答案）</button>
-
-          <div class="stamp-slot" id="stamp-slot" hidden>
-            <div class="stamp" id="stamp"></div>
-            <div class="stamp-note" id="stamp-note"></div>
-          </div>
-
-          <div class="evidence" id="evidence" hidden>
-            <div class="evidence-head">ORIGINAL EVIDENCE</div>
-            <figure class="photo" id="photo" hidden>
-              <span class="tape" aria-hidden="true"></span>
-              <img id="shot-img" alt="剧照" />
-              <figcaption id="photo-caption"></figcaption>
-            </figure>
-            <div class="ev-grid">
-              <div class="ev-line" id="ev-line"></div>
-              <div class="ev-answer" id="ev-answer"></div>
-              <div class="ev-cn" id="ev-cn"></div>
-              <div class="ev-context" id="ev-context"></div>
-              <div class="ev-structure" id="ev-structure"></div>
-            </div>
-            <div class="ev-foot">You saved this expression from this scene.</div>
-          </div>
-        </div>
-      </section>
-
-      <footer class="nav" id="nav" hidden>
-        <button id="prev" class="nav-btn">← 上一张</button>
-        <div class="pips" id="pips" aria-hidden="true">
-          <span class="pip" data-layer="1"></span>
-          <span class="pip" data-layer="2"></span>
-          <span class="pip" data-layer="3"></span>
-        </div>
-        <button id="next" class="nav-btn">下一张 →</button>
-      </footer>
-    </main>
+    </div>
   </div>
 
   <script src="common.js"></script>

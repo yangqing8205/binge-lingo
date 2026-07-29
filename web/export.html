@@ -3,110 +3,113 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>BingeLingo · 带走练习</title>
+  <title>BingeLingo · Practice to Go</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
-    href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+    href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Oswald:wght@400;500;600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
     rel="stylesheet"
   />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div class="perf perf-left" aria-hidden="true"></div>
-  <div class="perf perf-right" aria-hidden="true"></div>
-
-  <div class="wrap wrap-wide">
-    <header class="archive-head">
-      <div class="head-top">
-        <div class="brand">
-          <span class="brand-mark">BingeLingo</span>
-          <span class="brand-sub">EXPORT PROMPT</span>
-        </div>
-        <div class="head-meta">
-          <span class="streak" id="streak">DAY 1</span>
-        </div>
+  <header class="topbar">
+    <div class="topbar__inner">
+      <div class="brand">
+        <span class="brand-mark">BingeLingo</span>
+        <span class="brand-sub">The Archive</span>
       </div>
-      <nav class="nav-tabs">
-        <a href="/review">复习做题</a>
-        <a href="/chat">对话练习</a>
-        <a href="/export">带走练习</a>
-      </nav>
-    </header>
+      <div class="topbar__meta">
+        <span class="streak" id="streak">DAY 1</span>
+      </div>
+    </div>
+  </header>
 
-    <main>
-      <div class="export-intro">
-        <h1 class="export-title">TAKE YOUR PRACTICE ANYWHERE</h1>
-        <p class="export-sub">
-          把下面生成的提示词复制到任何 AI 对话工具（ChatGPT / 豆包 / Kimi / Claude），
-          就能开始角色扮演口语练习。选好角色和选项，我们帮你生成定制的练习指令。
-        </p>
+  <div class="desk">
+    <div class="folder">
+      <div class="folder__fastener top" aria-hidden="true">
+        <span class="hole"></span><span class="hole"></span>
       </div>
 
-      <div id="notice" class="notice" hidden></div>
+      <div class="folder__body">
+        <div class="case-head">
+          <div>
+            <span class="case-kicker">Take It Anywhere</span>
+            <h1 class="case-title">Practice to Go</h1>
+          </div>
+        </div>
 
-      <div class="export-grid">
-        <!-- ===== options ===== -->
-        <div class="options">
-          <!-- 1. character -->
-          <div class="opt-group">
-            <div class="opt-label">1 · 选择角色</div>
-            <div class="opt-choices" id="opt-character"></div>
+        <main>
+          <div class="export-intro">
+            <p class="export-sub">
+              把下面生成的提示词复制到任何 AI 对话工具（ChatGPT / 豆包 / Kimi / Claude），
+              就能开始角色扮演口语练习。选好角色和选项，我们帮你生成定制的练习指令。
+            </p>
           </div>
 
-          <!-- 2. expressions -->
-          <div class="opt-group">
-            <div class="opt-label">
-              2 · 选择要练的表达
-              <button class="opt-mini" id="expr-all">全选</button>
-              <button class="opt-mini" id="expr-none">清空</button>
+          <div id="notice" class="notice" hidden></div>
+
+          <div class="export-grid">
+            <div class="options">
+              <div class="opt-group">
+                <div class="opt-label">1 · 选择角色</div>
+                <div class="opt-choices" id="opt-character"></div>
+              </div>
+
+              <div class="opt-group">
+                <div class="opt-label">
+                  2 · 选择要练的表达
+                  <button class="opt-mini" id="expr-all">全选</button>
+                  <button class="opt-mini" id="expr-none">清空</button>
+                </div>
+                <div class="opt-tags" id="opt-expressions"></div>
+              </div>
+
+              <div class="opt-group">
+                <div class="opt-label">3 · 对话轮数</div>
+                <div class="opt-choices" id="opt-turns"></div>
+              </div>
+
+              <div class="opt-group">
+                <div class="opt-label">4 · 引导强度</div>
+                <div class="opt-choices" id="opt-guidance"></div>
+              </div>
+
+              <div class="opt-group">
+                <div class="opt-label">5 · 场景设定</div>
+                <div class="opt-choices" id="opt-scene"></div>
+                <input id="scene-custom" class="opt-input" type="text" placeholder="描述你想要的场景…" hidden />
+              </div>
+
+              <div class="opt-group">
+                <div class="opt-label">6 · 纠错方式</div>
+                <div class="opt-choices" id="opt-correction"></div>
+              </div>
+
+              <div class="opt-group">
+                <div class="opt-label">7 · AI 回复语言</div>
+                <div class="opt-choices" id="opt-language"></div>
+              </div>
             </div>
-            <div class="opt-tags" id="opt-expressions"></div>
-          </div>
 
-          <!-- 3. turns -->
-          <div class="opt-group">
-            <div class="opt-label">3 · 对话轮数</div>
-            <div class="opt-choices" id="opt-turns"></div>
+            <div class="result">
+              <div class="result-head">
+                <span class="result-title">Your Prompt</span>
+                <button id="copy-btn" class="btn-submit">复制</button>
+              </div>
+              <textarea id="prompt-out" class="prompt-out" readonly spellcheck="false"></textarea>
+              <div class="result-foot" id="copy-note"></div>
+            </div>
           </div>
-
-          <!-- 4. guidance -->
-          <div class="opt-group">
-            <div class="opt-label">4 · 引导强度</div>
-            <div class="opt-choices" id="opt-guidance"></div>
-          </div>
-
-          <!-- 5. scene -->
-          <div class="opt-group">
-            <div class="opt-label">5 · 场景设定</div>
-            <div class="opt-choices" id="opt-scene"></div>
-            <input id="scene-custom" class="opt-input" type="text" placeholder="描述你想要的场景…" hidden />
-          </div>
-
-          <!-- 6. correction -->
-          <div class="opt-group">
-            <div class="opt-label">6 · 纠错方式</div>
-            <div class="opt-choices" id="opt-correction"></div>
-          </div>
-
-          <!-- 7. language -->
-          <div class="opt-group">
-            <div class="opt-label">7 · AI 回复语言</div>
-            <div class="opt-choices" id="opt-language"></div>
-          </div>
-        </div>
-
-        <!-- ===== result ===== -->
-        <div class="result">
-          <div class="result-head">
-            <span class="result-title">YOUR PROMPT</span>
-            <button id="copy-btn" class="btn-submit">复制</button>
-          </div>
-          <textarea id="prompt-out" class="prompt-out" readonly spellcheck="false"></textarea>
-          <div class="result-foot" id="copy-note"></div>
-        </div>
+        </main>
       </div>
-    </main>
+
+      <nav class="folder-tabs">
+        <a class="folder-tab" href="/review"><span>复习做题</span></a>
+        <a class="folder-tab" href="/chat"><span>对话练习</span></a>
+        <a class="folder-tab" href="/export"><span>Practice to Go</span></a>
+      </nav>
+    </div>
   </div>
 
   <script src="common.js"></script>

@@ -50,7 +50,7 @@ function updateStreak() {
 // Mark the active nav tab based on the current path.
 function markActiveNav() {
   const path = location.pathname.replace(/\/$/, "") || "/review";
-  document.querySelectorAll(".nav-tabs a").forEach((a) => {
+  document.querySelectorAll(".folder-tab").forEach((a) => {
     const href = a.getAttribute("href");
     a.classList.toggle("is-active", href === path);
   });

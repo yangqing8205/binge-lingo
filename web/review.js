@@ -18,7 +18,7 @@ const el = {
   nav: $("nav"),
   counter: $("counter"),
   episodeLine: $("episode-line"),
-  filetab: $("filetab"),
+  filetab: $("case-kicker"),
   difficulty: $("difficulty"),
   prompt: $("prompt"),
   hintblock: $("hintblock"),

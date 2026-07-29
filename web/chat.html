@@ -7,73 +7,86 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link
-    href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+    href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Oswald:wght@400;500;600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
     rel="stylesheet"
   />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <div class="perf perf-left" aria-hidden="true"></div>
-  <div class="perf perf-right" aria-hidden="true"></div>
-
-  <div class="wrap">
-    <header class="archive-head">
-      <div class="head-top">
-        <div class="brand">
-          <span class="brand-mark">BingeLingo</span>
-          <span class="brand-sub">ROLEPLAY PRACTICE</span>
-        </div>
-        <div class="head-meta">
-          <span class="streak" id="streak">DAY 1</span>
-        </div>
+  <header class="topbar">
+    <div class="topbar__inner">
+      <div class="brand">
+        <span class="brand-mark">BingeLingo</span>
+        <span class="brand-sub">The Archive</span>
       </div>
-      <nav class="nav-tabs">
-        <a href="/review">复习做题</a>
-        <a href="/chat">对话练习</a>
-        <a href="/export">带走练习</a>
+      <div class="topbar__meta">
+        <span class="streak" id="streak">DAY 1</span>
+      </div>
+    </div>
+  </header>
+
+  <div class="desk">
+    <div class="folder">
+      <div class="folder__fastener top" aria-hidden="true">
+        <span class="hole"></span><span class="hole"></span>
+      </div>
+
+      <div class="folder__body">
+        <div class="case-head">
+          <div>
+            <span class="case-kicker">Roleplay Practice</span>
+            <h1 class="case-title">对话练习</h1>
+          </div>
+        </div>
+
+        <main class="stage">
+          <div id="chat-view">
+            <section id="char-select" class="char-select">
+              <div class="char-select-head">选一个角色，开始口语陪练</div>
+              <div class="char-grid" id="char-grid"></div>
+            </section>
+
+            <section id="chat-room" class="chat-room" hidden>
+              <header class="chat-head">
+                <div class="chat-who">
+                  <span class="chat-avatar" id="chat-avatar"></span>
+                  <span class="chat-name" id="chat-name"></span>
+                  <span class="online-dot" title="online"></span>
+                </div>
+                <button class="chat-back" id="chat-back">← 换角色</button>
+              </header>
+
+              <button class="targets-toggle" id="targets-toggle">
+                今日目标表达 <span id="targets-count"></span> ▾
+              </button>
+              <div class="targets-list" id="targets-list" hidden></div>
+
+              <div class="chat-log" id="chat-log"></div>
+
+              <div class="chat-inputbar" id="chat-inputbar">
+                <input id="chat-input" class="chat-input" type="text" autocomplete="off" placeholder="用英语回复…" />
+                <button id="chat-send" class="btn-submit">发送</button>
+              </div>
+              <button id="chat-end" class="chat-end">结束对话，看点评</button>
+
+              <div class="critique" id="critique" hidden>
+                <div class="stamp-slot">
+                  <div class="stamp gold" id="critique-stamp"></div>
+                </div>
+                <div class="critique-body" id="critique-body"></div>
+                <button id="critique-again" class="nav-btn">再练一次</button>
+              </div>
+            </section>
+          </div>
+        </main>
+      </div>
+
+      <nav class="folder-tabs">
+        <a class="folder-tab" href="/review"><span>复习做题</span></a>
+        <a class="folder-tab" href="/chat"><span>对话练习</span></a>
+        <a class="folder-tab" href="/export"><span>Practice to Go</span></a>
       </nav>
-    </header>
-
-    <main class="stage">
-      <div id="chat-view">
-        <section id="char-select" class="char-select">
-          <div class="char-select-head">选一个角色，开始口语陪练</div>
-          <div class="char-grid" id="char-grid"></div>
-        </section>
-
-        <section id="chat-room" class="chat-room" hidden>
-          <header class="chat-head">
-            <div class="chat-who">
-              <span class="chat-avatar" id="chat-avatar"></span>
-              <span class="chat-name" id="chat-name"></span>
-              <span class="online-dot" title="online"></span>
-            </div>
-            <button class="chat-back" id="chat-back">← 换角色</button>
-          </header>
-
-          <button class="targets-toggle" id="targets-toggle">
-            今日目标表达 <span id="targets-count"></span> ▾
-          </button>
-          <div class="targets-list" id="targets-list" hidden></div>
-
-          <div class="chat-log" id="chat-log"></div>
-
-          <div class="chat-inputbar" id="chat-inputbar">
-            <input id="chat-input" class="chat-input" type="text" autocomplete="off" placeholder="用英语回复…" />
-            <button id="chat-send" class="btn-submit">发送</button>
-          </div>
-          <button id="chat-end" class="chat-end">结束对话，看点评</button>
-
-          <div class="critique" id="critique" hidden>
-            <div class="stamp-slot">
-              <div class="stamp gold" id="critique-stamp"></div>
-            </div>
-            <div class="critique-body" id="critique-body"></div>
-            <button id="critique-again" class="nav-btn">再练一次</button>
-          </div>
-        </section>
-      </div>
-    </main>
+    </div>
   </div>
 
   <script src="common.js"></script>
