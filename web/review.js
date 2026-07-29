@@ -68,7 +68,7 @@ function episodeText() {
 }
 
 function clozeHTML(text) {
-  return esc(text).replace(/＿＿＿/g, '<span class="blank">＿＿＿</span>');
+  return esc(text).replace(/＿＿＿/g, '<span class="blank" aria-hidden="true"></span>');
 }
 
 function renderPrompt(card) {

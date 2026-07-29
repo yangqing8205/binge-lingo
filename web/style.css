@@ -1,23 +1,27 @@
 /* ============ BingeLingo · The Archive (mosbyfiles-inspired file folder) ============ */
 :root {
-  --dark: #191919;          /* topbar, strong ink */
-  --cream: #fdfaf7;         /* folder / content stock */
-  --manila: #ece5d8;        /* desk surface behind the folder */
+  --dark: #1a1a1a;          /* topbar + dark filing cabinet behind tabs */
+  --cream: #fbf8f2;         /* folder / content stock */
+  --page: #e8e4de;          /* page background outside content */
   --ink: #22201d;           /* body text */
   --ink-soft: #5f5b53;
   --gray: #8a877f;          /* faint captions, labels */
-  --accent: #8f3a2f;        /* oxblood — stamps, active tab, key actions */
+  --accent: #8f3a2f;        /* oxblood — stamps, key actions */
   --accent-deep: #6f2b22;
+  --tab-purple: #4a2080;
+  --tab-mustard: #d4a800;
+  --tab-teal: #1f6f6b;      /* third contrast tab */
   --line: #ddd5c6;
   --line-strong: #cdc3b0;
-  --blank: #b56a1e;         /* the ___ underline */
+  --blank: #d98a2b;         /* the cloze underline */
   --shadow-folder: 0 1px 0 rgba(0,0,0,.04), 0 18px 44px rgba(45,38,28,.16);
   --shadow-photo: 0 2px 3px rgba(0,0,0,.10), 0 14px 30px rgba(45,38,28,.20);
-  --font-display: "Fraunces", Georgia, "Songti SC", serif;
-  --font-tab: "Oswald", "PingFang SC", system-ui, sans-serif;
+  --font-brand: "Playfair Display", Georgia, serif;   /* topbar wordmark */
+  --font-serif: "Libre Baskerville", Georgia, "Songti SC", serif; /* prompt + reading */
+  --font-tab: "Oswald", "PingFang SC", system-ui, sans-serif;     /* labels, small caps */
   --font-body: "Inter", system-ui, -apple-system, "PingFang SC", sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
-  --topbar-h: 58px;
+  --topbar-h: 60px;
 }
 
 * { box-sizing: border-box; }
@@ -26,9 +30,7 @@ body {
   margin: 0;
   min-height: 100vh;
   padding-top: var(--topbar-h);
-  background-color: var(--manila);
-  background-image:
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.035'/%3E%3C/svg%3E");
+  background-color: var(--page);
   color: var(--ink);
   font-family: var(--font-body);
   -webkit-font-smoothing: antialiased;
@@ -54,22 +56,23 @@ body {
   align-items: center;
   justify-content: space-between;
 }
-.brand { display: flex; align-items: baseline; gap: 12px; }
+.brand { display: flex; align-items: baseline; gap: 14px; }
 .brand-mark {
-  font-family: var(--font-display);
-  font-weight: 600;
-  font-size: 24px;
-  letter-spacing: .2px;
-  color: var(--cream);
+  font-family: var(--font-brand);
+  font-weight: 900;
+  font-size: 23px;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: #fff;
   line-height: 1;
 }
 .brand-sub {
   font-family: var(--font-tab);
-  font-weight: 500;
+  font-weight: 600;
   font-size: 10px;
   letter-spacing: 3px;
   text-transform: uppercase;
-  color: var(--gray);
+  color: #8f8b83;
 }
 .topbar__meta { display: flex; align-items: center; gap: 16px; }
 .counter {
@@ -92,98 +95,98 @@ body {
 
 /* ============ desk / folder layout ============ */
 .desk {
-  max-width: 1080px;
-  margin: 34px auto 60px;
-  padding: 0 28px;
+  max-width: 1120px;
+  margin: 40px auto 64px;
+  padding: 0 28px 0 60px;   /* extra left room for the black index dots */
+  position: relative;
 }
 .folder {
   position: relative;
   display: flex;
-  background: var(--cream);
-  border: 1px solid var(--line-strong);
-  border-radius: 4px 4px 10px 10px;
-  box-shadow: var(--shadow-folder);
-  min-height: 60vh;
+  align-items: stretch;
+  min-height: 66vh;
 }
-/* left decorative gutter: fastener + edge shading */
-.folder::before {
-  content: "";
+/* big solid black index dots, evenly spaced outside the left edge */
+.folder__dots {
   position: absolute;
-  left: 0; top: 0; bottom: 0;
-  width: 46px;
-  background:
-    linear-gradient(to right, rgba(45,38,28,.06), transparent);
-  border-right: 1px dashed var(--line);
-  border-radius: 4px 0 0 10px;
-  pointer-events: none;
-}
-/* two-hole punch fastener in the gutter */
-.folder__fastener {
-  position: absolute;
-  left: 15px;
+  left: -32px;
+  top: 40px;
+  bottom: 40px;
   display: flex;
   flex-direction: column;
-  gap: 15px;
-  z-index: 2;
+  justify-content: space-between;
+  align-items: center;
   pointer-events: none;
+  z-index: 3;
 }
-.folder__fastener.top { top: 46px; }
-.folder__fastener .hole {
-  width: 15px; height: 15px;
+.folder__dots .dot {
+  width: 13px; height: 13px;
   border-radius: 50%;
-  background: radial-gradient(circle at 40% 35%, #cfc7b6, #b6ac97);
-  box-shadow: inset 0 1px 2px rgba(0,0,0,.35), 0 1px 0 rgba(255,255,255,.5);
+  background: #1a1a1a;
+  flex: none;
 }
+/* the paper sheet */
 .folder__body {
   flex: 1;
   min-width: 0;
-  padding: 40px 44px 40px 66px;
+  background: var(--cream);
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+  border: 1px solid var(--line-strong);
+  border-radius: 3px 0 0 3px;
+  padding: 42px 48px 42px 52px;
+  box-shadow:
+    inset 0 0 0 1px rgba(255,255,255,.5),
+    inset 0 2px 5px rgba(255,255,255,.6),
+    0 20px 46px rgba(45,38,28,.18);
 }
-/* ============ right-side vertical file tabs ============ */
+
+/* ============ dark filing cabinet + colored tabs ============ */
 .folder-tabs {
   flex: none;
-  width: 52px;
-  padding: 30px 0;
+  width: 78px;
+  background: var(--dark);
+  border-radius: 0 4px 4px 0;
+  padding: 34px 0;
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 14px;
+  gap: 18px;
+  box-shadow: inset 8px 0 18px rgba(0,0,0,.4);
 }
 .folder-tab {
   position: relative;
-  width: 46px;
-  min-height: 150px;
-  margin-left: -1px;              /* tuck the tab under the folder edge */
+  width: 60px;
+  min-height: 168px;
+  margin-left: -6px;              /* tuck tab root into the dark cabinet */
   display: flex;
   align-items: center;
   justify-content: center;
   text-decoration: none;
-  background: #ded4c0;
-  color: var(--ink-soft);
-  border: 1px solid var(--line-strong);
-  border-left: none;
-  border-radius: 0 9px 9px 0;
-  box-shadow: 2px 2px 6px rgba(45,38,28,.14);
-  transition: transform .16s cubic-bezier(.33,1,.68,1), background .16s, color .16s, width .16s;
+  color: #fff;
+  border-radius: 0 10px 10px 0;
+  box-shadow: 3px 3px 8px rgba(0,0,0,.35);
+  transition: transform .18s cubic-bezier(.33,1,.68,1), width .18s, box-shadow .18s;
 }
+.folder-tab:nth-child(1) { background: var(--tab-purple); }
+.folder-tab:nth-child(2) { background: var(--tab-mustard); color: #2a1e00; }
+.folder-tab:nth-child(3) { background: var(--tab-teal); }
 .folder-tab span {
   writing-mode: vertical-rl;
   text-orientation: mixed;         /* CJK upright; Latin rotates 90°cw */
   font-family: var(--font-tab);
-  font-weight: 500;
-  font-size: 15px;
+  font-weight: 600;
+  font-size: 16px;
   letter-spacing: 2px;
   text-transform: uppercase;
   white-space: nowrap;
 }
-.folder-tab:hover { transform: translateX(4px); background: #e6dcc8; color: var(--ink); }
+.folder-tab:hover { transform: translateX(6px); }
 .folder-tab.is-active {
-  background: var(--accent);
-  border-color: var(--accent-deep);
-  color: var(--cream);
-  width: 52px;
-  transform: translateX(6px);
-  box-shadow: 3px 3px 9px rgba(111,43,34,.32);
+  width: 74px;
+  transform: translateX(10px);
+  box-shadow: 6px 4px 16px rgba(0,0,0,.45);
+  z-index: 2;
 }
 
 /* ============ stage / notice ============ */
@@ -210,9 +213,9 @@ body {
   border-bottom: 2px solid var(--dark);
 }
 .case-title {
-  font-family: var(--font-display);
-  font-weight: 600;
-  font-size: 30px;
+  font-family: var(--font-brand);
+  font-weight: 900;
+  font-size: 32px;
   letter-spacing: .2px;
   color: var(--ink);
   margin: 0;
@@ -220,7 +223,7 @@ body {
 }
 .case-kicker {
   font-family: var(--font-tab);
-  font-weight: 500;
+  font-weight: 600;
   font-size: 11px;
   letter-spacing: 3px;
   text-transform: uppercase;
@@ -252,21 +255,26 @@ body {
 /* ============ prompt (mini-scenario) ============ */
 .filebody { position: relative; }
 .prompt {
-  font-family: var(--font-display);
-  font-size: 24px;
-  line-height: 1.65;
+  font-family: var(--font-serif);
+  font-size: 22px;
+  line-height: 1.75;
   color: var(--ink);
   font-weight: 400;
   min-height: 40px;
 }
+/* clean fixed-width orange fill line — no underscore glyphs */
 .prompt .blank {
-  color: var(--blank);
-  font-weight: 600;
+  display: inline-block;
+  width: 120px;
+  height: 0;
+  vertical-align: baseline;
+  border: 0;
   border-bottom: 3px solid var(--blank);
-  padding: 0 4px;
-  letter-spacing: 1px;
+  margin: 0 4px;
+  font-size: 0;
+  color: transparent;
 }
-.prompt .zh { font-size: 25px; font-weight: 500; }
+.prompt .zh { font-size: 24px; font-weight: 400; }
 
 /* ============ hint block ============ */
 .hintblock {
@@ -476,7 +484,7 @@ body {
 
 .ev-grid { line-height: 1.6; }
 .ev-line {
-  font-family: var(--font-display);
+  font-family: var(--font-serif);
   font-size: 17px;
   font-style: italic;
   color: var(--ink-soft);
@@ -484,7 +492,7 @@ body {
 }
 .ev-line:empty { display: none; }
 .ev-answer {
-  font-family: var(--font-display);
+  font-family: var(--font-serif);
   font-weight: 600;
   font-size: 27px;
   color: var(--accent);
@@ -543,7 +551,7 @@ body {
 
 /* ============ character select ============ */
 .char-select-head {
-  font-family: var(--font-display);
+  font-family: var(--font-serif);
   font-weight: 500;
   font-size: 19px;
   color: var(--ink);
@@ -585,7 +593,7 @@ body {
 }
 .char-text { min-width: 0; }
 .char-cardname {
-  font-family: var(--font-display);
+  font-family: var(--font-serif);
   font-weight: 600;
   font-size: 16px;
   color: var(--ink);
@@ -622,7 +630,7 @@ body {
   font-size: 14px;
 }
 .chat-name {
-  font-family: var(--font-display);
+  font-family: var(--font-serif);
   font-weight: 600;
   font-size: 17px;
   color: var(--ink);
@@ -751,7 +759,7 @@ body {
 /* ============ export page ============ */
 .export-intro { margin-bottom: 22px; }
 .export-title {
-  font-family: var(--font-display);
+  font-family: var(--font-serif);
   font-weight: 600;
   font-size: 28px;
   letter-spacing: .2px;
@@ -889,30 +897,33 @@ body {
 
 /* ============ responsive ============ */
 @media (max-width: 820px) {
+  .desk { padding: 0 16px; }
+  .folder__dots { display: none; }
   .folder { flex-direction: column; }
-  .folder__body { padding: 34px 24px 34px 44px; order: 1; }
+  .folder__body { padding: 30px 22px; order: 1; border-radius: 0 0 3px 3px; }
   .folder-tabs {
     flex-direction: row;
     width: auto;
-    padding: 12px 16px 0;
+    padding: 12px 14px 0;
     gap: 8px;
     order: 0;
+    border-radius: 4px 4px 0 0;
+    box-shadow: inset 0 8px 18px rgba(0,0,0,.4);
   }
   .folder-tab {
     width: auto;
     min-height: 0;
     margin-left: 0;
-    padding: 9px 16px;
-    border: 1px solid var(--line-strong);
+    padding: 10px 18px;
     border-radius: 8px 8px 0 0;
   }
   .folder-tab span {
     writing-mode: horizontal-tb;
-    transform: none;
     font-size: 13px;
     letter-spacing: 1px;
   }
-  .folder-tab.is-active { width: auto; transform: none; }
+  .folder-tab:hover { transform: none; }
+  .folder-tab.is-active { width: auto; transform: translateY(-4px); }
   .export-grid { grid-template-columns: 1fr; }
   .result { position: static; }
   .case-head { flex-direction: column; align-items: flex-start; gap: 8px; }
