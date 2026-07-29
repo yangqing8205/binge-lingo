@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: binge-lingo
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    # gunicorn serves the Flask `app` object defined in review.py and binds the
+    # port Render assigns via $PORT. 2 workers is plenty for a personal app.
+    startCommand: gunicorn review:app --bind 0.0.0.0:$PORT --workers 2 --timeout 120
+    envVars:
+      - key: API_BASE_URL
+        sync: false
+      - key: API_KEY
+        sync: false
+      - key: API_MODEL
+        sync: false
+      - key: NOTION_TOKEN
+        sync: false
+      - key: NOTION_DATABASE_ID
+        sync: false
+      # Leave HTTPS_PROXY unset on Render — the server reaches Notion directly.
+      - key: HTTPS_PROXY
+        value: ""

@@ -7,6 +7,8 @@ already-flattened card JSON from /api/cards.
 """
 from __future__ import annotations
 
+import os
+
 from flask import Flask, jsonify, redirect, request, send_from_directory
 
 from src import chat, config, matching, notion_reader
@@ -112,9 +114,13 @@ def api_chat_end():
 def main() -> None:
     # Sanity-check required config up front with a clear message.
     _ = config.NOTION_TOKEN, config.NOTION_DATABASE_ID
-    print(f"[BingeLingo] Reviewer running →  http://127.0.0.1:{PORT}")
+    # Render (and most PaaS) inject the port to bind on via $PORT; fall back to
+    # 5001 for local runs. Bind 0.0.0.0 so the container is reachable.
+    port = int(os.getenv("PORT", PORT))
+    host = os.getenv("HOST", "0.0.0.0")
+    print(f"[BingeLingo] Reviewer running →  http://{host}:{port}")
     print("[BingeLingo] Reading live from Notion. Ctrl-C to stop.")
-    app.run(host="127.0.0.1", port=PORT, debug=False)
+    app.run(host=host, port=port, debug=False)
 
 
 if __name__ == "__main__":
