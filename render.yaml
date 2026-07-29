@@ -18,6 +18,13 @@ services:
         sync: false
       - key: NOTION_DATABASE_ID
         sync: false
+      # Password for the login gate. Change it in the Render dashboard.
+      - key: APP_PASSWORD
+        sync: false
+      # Signs the login session cookie. generateValue makes Render mint a stable
+      # random secret so sessions persist across restarts and workers.
+      - key: SECRET_KEY
+        generateValue: true
       # Leave HTTPS_PROXY unset on Render — the server reaches Notion directly.
       - key: HTTPS_PROXY
         value: ""

@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BingeLingo · 登录</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&family=Oswald:wght@400;500;600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="login-wrap">
+    <div class="login-card">
+      <div class="login-brand">BINGELINGO</div>
+      <div class="login-kicker">THE ARCHIVE · RESTRICTED</div>
+      <p class="login-note">这是私人档案，请输入密码查看。</p>
+      <form id="login-form" class="login-form">
+        <input
+          id="login-pass"
+          class="login-input"
+          type="password"
+          autocomplete="current-password"
+          placeholder="密码"
+          autofocus
+        />
+        <button type="submit" class="btn-submit">进入</button>
+      </form>
+      <div class="login-error" id="login-error"></div>
+    </div>
+  </div>
+
+  <script>
+    "use strict";
+    const form = document.getElementById("login-form");
+    const pass = document.getElementById("login-pass");
+    const err = document.getElementById("login-error");
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      err.textContent = "";
+      try {
+        const res = await fetch("/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ password: pass.value }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          window.location.href = "/review";
+        } else {
+          err.textContent = data.error || "密码错误";
+          pass.value = "";
+          pass.focus();
+        }
+      } catch (e2) {
+        err.textContent = "无法连接服务器";
+      }
+    });
+  </script>
+</body>
+</html>

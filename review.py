@@ -8,14 +8,71 @@ already-flattened card JSON from /api/cards.
 from __future__ import annotations
 
 import os
+import secrets
 
-from flask import Flask, jsonify, redirect, request, send_from_directory
+from flask import (
+    Flask,
+    jsonify,
+    redirect,
+    request,
+    send_from_directory,
+    session,
+)
 
 from src import chat, config, matching, notion_reader
 
 app = Flask(__name__, static_folder="web", static_url_path="")
 
 PORT = 5001
+
+# ---- simple password gate ----
+# Single shared password; no accounts. Set APP_PASSWORD in the environment on
+# deploy; falls back to the baked-in default for local use.
+APP_PASSWORD = os.getenv("APP_PASSWORD", "9713.jiayouYQ")
+# Signs the session cookie. Set SECRET_KEY on Render so logins survive restarts
+# and are consistent across workers; otherwise a random per-process key is used.
+app.secret_key = os.getenv("SECRET_KEY", secrets.token_hex(32))
+# Endpoints reachable without a valid session.
+_PUBLIC_PATHS = {"/login", "/favicon.ico"}
+# Static assets (css/js/fonts) carry no secrets, so the login page can load them
+# before authentication. Card/character data is behind /api/ and stays gated.
+_PUBLIC_SUFFIXES = (".css", ".js", ".ico", ".png", ".svg", ".woff", ".woff2")
+
+
+@app.before_request
+def require_login():
+    if session.get("authed"):
+        return None
+    if request.path in _PUBLIC_PATHS or request.path.endswith(_PUBLIC_SUFFIXES):
+        return None
+    # API callers get a clean 401 so the UI can react; pages redirect to login.
+    if request.path.startswith("/api/"):
+        return jsonify({"ok": False, "error": "unauthorized"}), 401
+    return redirect("/login")
+
+
+@app.get("/login")
+def login_page():
+    if session.get("authed"):
+        return redirect("/review")
+    return send_from_directory("web", "login.html")
+
+
+@app.post("/login")
+def login_submit():
+    data = request.get_json(silent=True) or request.form
+    password = str(data.get("password", ""))
+    if secrets.compare_digest(password, APP_PASSWORD):
+        session["authed"] = True
+        session.permanent = True
+        return jsonify({"ok": True})
+    return jsonify({"ok": False, "error": "密码错误"}), 401
+
+
+@app.post("/logout")
+def logout():
+    session.clear()
+    return jsonify({"ok": True})
 
 
 @app.get("/")

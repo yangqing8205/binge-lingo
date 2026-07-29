@@ -5,6 +5,17 @@
 
 const $ = (id) => document.getElementById(id);
 
+// If the session expired mid-use, any API call 401s — bounce to the login page
+// rather than surfacing a confusing error. Wraps the native fetch.
+const _rawFetch = window.fetch.bind(window);
+window.fetch = async (...args) => {
+  const res = await _rawFetch(...args);
+  if (res.status === 401 && !location.pathname.startsWith("/login")) {
+    location.href = "/login";
+  }
+  return res;
+};
+
 function esc(s) {
   const d = document.createElement("div");
   d.textContent = s == null ? "" : String(s);
