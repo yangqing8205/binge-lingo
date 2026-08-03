@@ -16,5 +16,9 @@ screenshots/*
 # Local state
 .processed_screenshots.json
 
+# Local review-attempt log (SQLite) — runtime data, keep the dir with .gitkeep
+data/*
+!data/.gitkeep
+
 # OS
 .DS_Store

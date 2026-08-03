@@ -10,6 +10,7 @@ const state = {
   layer: 1,
   revealed: false,
   outcome: null, // "cold" | "hint" | "revealed"
+  shownAt: 0, // ms timestamp of when the current card's prompt appeared
 };
 
 const el = {
@@ -149,9 +150,29 @@ function resetCard() {
   state.layer = 1;
   state.revealed = false;
   state.outcome = null;
+  state.shownAt = Date.now();
   el.guessInput.value = "";
   el.nudge.hidden = true;
   el.nudge.textContent = "";
+}
+
+// Fire-and-forget append to the local SQLite review log. `result` is one of
+// "cold" | "hint" | "wrong" | "skip". Recording only — failures are ignored so
+// they can never interrupt the review flow.
+function logAttempt(result) {
+  const card = state.cards[state.i];
+  if (!card) return;
+  const elapsed = (Date.now() - state.shownAt) / 1000;
+  fetch("/api/review-log", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      page_id: card.id || "",
+      expression: card.expression || "",
+      result,
+      elapsed_seconds: elapsed,
+    }),
+  }).catch(() => {});
 }
 
 function revealWith(outcome) {
@@ -186,7 +207,9 @@ async function submitGuess() {
   }
 
   if (correct) {
-    revealWith(state.layer >= 2 ? "hint" : "cold");
+    const outcome = state.layer >= 2 ? "hint" : "cold";
+    logAttempt(outcome);
+    revealWith(outcome);
     return;
   }
 
@@ -197,12 +220,15 @@ async function submitGuess() {
     el.guessInput.value = "";
     render();
   } else {
+    // Wrong again after the hint layer — a genuine miss, distinct from a skip.
+    logAttempt("wrong");
     revealWith("revealed");
   }
 }
 
 function skip() {
   if (state.revealed) return;
+  logAttempt("skip");
   revealWith("revealed");
 }
 

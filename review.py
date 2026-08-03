@@ -19,7 +19,7 @@ from flask import (
     session,
 )
 
-from src import chat, config, matching, notion_reader
+from src import chat, config, matching, notion_reader, review_log
 
 # Resolve paths from this file's location, never the process CWD: under gunicorn
 # on Render the working directory is not guaranteed to be the repo root, so any
@@ -137,6 +137,30 @@ def api_check():
     expression = str(data.get("expression", ""))
     correct = matching.is_correct(guess, expression)
     return jsonify({"ok": True, "correct": correct})
+
+
+@app.post("/api/review-log")
+def api_review_log():
+    """Record one review attempt (or skip) to the local SQLite log.
+
+    Recording only — this does not feed any scheduler and never affects which
+    cards the reviewer shows. A logging failure must not break the review flow,
+    so errors are swallowed with a soft-fail response.
+    """
+    data = request.get_json(silent=True) or {}
+    page_id = str(data.get("page_id", ""))
+    expression = str(data.get("expression", ""))
+    result = str(data.get("result", ""))
+    elapsed = data.get("elapsed_seconds")
+    try:
+        elapsed_seconds = float(elapsed) if elapsed is not None else None
+    except (TypeError, ValueError):
+        elapsed_seconds = None
+    try:
+        review_log.record(page_id, expression, result, elapsed_seconds)
+    except Exception as exc:  # noqa: BLE001 — never let logging break review
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    return jsonify({"ok": True})
 
 
 # ---- 对话练习 (roleplay conversation practice) ----
