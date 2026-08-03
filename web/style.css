@@ -526,6 +526,57 @@ body {
   color: var(--gray);
   font-style: italic;
 }
+/* ---- word history (per-expression practice recap) ---- */
+.wordhist {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid rgba(0,0,0,.07);
+}
+.wordhist__ring { width: 64px; height: 64px; flex: 0 0 64px; }
+.wordhist__track,
+.wordhist__prog {
+  fill: none;
+  stroke-width: 3;
+  stroke-linecap: butt; /* no rounded caps, no gloss — a plain thin ring */
+}
+.wordhist__track { stroke: #E3DAD0; }
+.wordhist__prog {
+  stroke: #8C3A2B;
+  /* start at 12 o'clock and sweep clockwise; JS sets the dash offset */
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
+}
+.wordhist__pct {
+  fill: var(--ink);
+  font-family: var(--font-serif);
+  font-size: 15px;
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+.wordhist__text { line-height: 1.5; }
+.wordhist__line1 { font-size: 14px; color: var(--ink); }
+.wordhist__line1 .big {
+  font-family: "Playfair Display", Georgia, serif;
+  font-size: 16px;
+  font-weight: 700;
+}
+.wordhist__line2 { margin-top: 3px; font-size: 12px; color: var(--gray); }
+/* ---- top-bar TODAY counter ---- */
+.today {
+  font-family: var(--font-tab);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--cream);
+  border: 1px solid rgba(255,255,255,.22);
+  padding: 4px 11px;
+  border-radius: 999px;
+}
+.today:empty { display: none; }
 /* ============ bottom-centered nav ============ */
 .nav {
   display: flex;

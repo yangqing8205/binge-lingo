@@ -11,6 +11,7 @@ const state = {
   revealed: false,
   outcome: null, // "cold" | "hint" | "revealed"
   shownAt: 0, // ms timestamp of when the current card's prompt appeared
+  whToken: 0, // guards async word-history renders against paging races
 };
 
 const el = {
@@ -42,6 +43,12 @@ const el = {
   evCn: $("ev-cn"),
   evContext: $("ev-context"),
   evStructure: $("ev-structure"),
+  wordhist: $("wordhist"),
+  whProg: $("wh-prog"),
+  whPct: $("wh-pct"),
+  whLine1: $("wh-line1"),
+  whLine2: $("wh-line2"),
+  today: $("today"),
   prev: $("prev"),
   next: $("next"),
   pips: $("pips"),
@@ -52,6 +59,29 @@ const STAMPS = {
   hint: { cls: "", text: "RECALLED WITH A HINT", note: "You got it with a little help." },
   revealed: { cls: "wine", text: "REVEALED", note: "Review this one again soon." },
 };
+
+// Chinese labels for the stored uppercase result enums. The UI never shows the
+// enum names themselves.
+const RESULT_ZH = {
+  FIRST_TRY_CORRECT: "一次答对",
+  CUED_CORRECT: "提示后答对",
+  INCORRECT: "答错",
+  REVEALED: "看了答案",
+};
+
+// r=28.5 in the 64-viewBox ring; keep in sync with .wordhist circles' r.
+const RING_CIRC = 2 * Math.PI * 28.5;
+
+// "今天" / "昨天" / "N 天前" from a UTC ISO timestamp, by local calendar day.
+function daysAgoZh(iso) {
+  const then = new Date(iso);
+  if (isNaN(then)) return "";
+  const startOf = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const days = Math.round((startOf(new Date()) - startOf(then)) / 86400000);
+  if (days <= 0) return "今天";
+  if (days === 1) return "昨天";
+  return days + " 天前";
+}
 
 function showNotice(msg, isError) {
   el.notice.hidden = false;
@@ -106,6 +136,44 @@ function renderEvidence(card) {
     : "";
 }
 
+// Draw the ratio ring: filled arc = first_try/total, clockwise from 12 o'clock.
+function drawRing(ratio) {
+  const filled = Math.max(0, Math.min(1, ratio)) * RING_CIRC;
+  el.whProg.setAttribute("stroke-dasharray", filled + " " + RING_CIRC);
+  el.whProg.setAttribute("stroke-dashoffset", "0");
+}
+
+// Fetch and render the per-expression practice history under the explanation.
+// Hidden entirely when the expression has no recorded attempts. Its own render
+// is async and race-guarded so paging away mid-fetch can't paint stale data.
+async function renderWordHistory(card) {
+  el.wordhist.hidden = true;
+  const pageId = card && card.id;
+  if (!pageId) return;
+  const token = ++state.whToken;
+  let h = null;
+  try {
+    const res = await fetch("/api/word-history?page_id=" + encodeURIComponent(pageId));
+    const data = await res.json();
+    h = data && data.history;
+  } catch (_) {
+    return; // recording-only feature; stay silent on failure
+  }
+  if (token !== state.whToken) return; // paged away while fetching
+  if (!h || !h.total) return;
+
+  const ratio = h.total ? h.first_try / h.total : 0;
+  drawRing(ratio);
+  el.whPct.textContent = Math.round(ratio * 100) + "%";
+  el.whLine1.innerHTML =
+    '<span class="big">' + h.total + "</span> 次练习 · " +
+    '<span class="big">' + h.first_try + "</span> 次 FIRST TRY";
+  const when = daysAgoZh(h.last_at);
+  const label = RESULT_ZH[h.last_result] || "";
+  el.whLine2.textContent = "上次 " + when + (label ? " · " + label : "");
+  el.wordhist.hidden = false;
+}
+
 function render() {
   const card = state.cards[state.i];
   if (!card) return;
@@ -139,6 +207,9 @@ function render() {
     el.stamp.textContent = s.text;
     el.stampNote.textContent = s.note;
     renderEvidence(card);
+  } else {
+    // Keep the async word-history from lingering on the next (unrevealed) card.
+    el.wordhist.hidden = true;
   }
 
   el.counter.textContent = state.i + 1 + " / " + state.cards.length;
@@ -156,14 +227,15 @@ function resetCard() {
   el.nudge.textContent = "";
 }
 
-// Fire-and-forget append to the local SQLite review log. `result` is one of
-// "cold" | "hint" | "wrong" | "skip". Recording only — failures are ignored so
-// they can never interrupt the review flow.
+// Append one attempt to the local SQLite review log. `result` is an uppercase
+// enum: FIRST_TRY_CORRECT | CUED_CORRECT | INCORRECT | REVEALED. Recording only
+// — failures are ignored so they can never interrupt the review flow. Returns
+// the request promise so callers can refresh the word-history after it lands.
 function logAttempt(result) {
   const card = state.cards[state.i];
-  if (!card) return;
+  if (!card) return Promise.resolve();
   const elapsed = (Date.now() - state.shownAt) / 1000;
-  fetch("/api/review-log", {
+  return fetch("/api/review-log", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -173,6 +245,17 @@ function logAttempt(result) {
       elapsed_seconds: elapsed,
     }),
   }).catch(() => {});
+}
+
+// Log the attempt, then reveal the answer and refresh both the word-history
+// (now including this attempt) and the TODAY counter.
+function logThenReveal(result, outcome) {
+  const card = state.cards[state.i];
+  logAttempt(result).then(() => {
+    if (state.cards[state.i] === card) renderWordHistory(card);
+    refreshTodayCount();
+  });
+  revealWith(outcome);
 }
 
 function revealWith(outcome) {
@@ -207,9 +290,11 @@ async function submitGuess() {
   }
 
   if (correct) {
-    const outcome = state.layer >= 2 ? "hint" : "cold";
-    logAttempt(outcome);
-    revealWith(outcome);
+    // Log the uppercase enum; the visual stamp still uses "cold"/"hint".
+    logThenReveal(
+      state.layer >= 2 ? "CUED_CORRECT" : "FIRST_TRY_CORRECT",
+      state.layer >= 2 ? "hint" : "cold"
+    );
     return;
   }
 
@@ -221,15 +306,13 @@ async function submitGuess() {
     render();
   } else {
     // Wrong again after the hint layer — a genuine miss, distinct from a skip.
-    logAttempt("wrong");
-    revealWith("revealed");
+    logThenReveal("INCORRECT", "revealed");
   }
 }
 
 function skip() {
   if (state.revealed) return;
-  logAttempt("skip");
-  revealWith("revealed");
+  logThenReveal("REVEALED", "revealed");
 }
 
 function go(delta) {
@@ -259,8 +342,22 @@ function wire() {
   });
 }
 
+// Update the top-bar TODAY counter (attempts logged today). Count only — no
+// accuracy, by design: showing a live hit-rate nudges users away from hard cards.
+async function refreshTodayCount() {
+  if (!el.today) return;
+  try {
+    const res = await fetch("/api/today-count");
+    const data = await res.json();
+    if (data && data.ok) el.today.textContent = "TODAY " + data.count;
+  } catch (_) {
+    // leave whatever was there; the counter is non-critical
+  }
+}
+
 async function load() {
   showNotice("正在从 Notion 读取…", false);
+  refreshTodayCount();
   try {
     const res = await fetch("/api/cards");
     const data = await res.json();

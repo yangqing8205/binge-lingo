@@ -11,20 +11,30 @@ the same place under `python review.py` and under gunicorn on Render.
 from __future__ import annotations
 
 import sqlite3
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from . import config
 
 DB_PATH: Path = config.PROJECT_ROOT / "data" / "review_log.db"
 
-# The four buckets the UI reports. Kept as a set so an unexpected value from a
-# stale client is caught early rather than silently stored.
+# The four buckets the UI reports. Uppercase names are the storage/code form;
+# the UI maps them to Chinese labels. Kept as a set so an unexpected value from
+# a stale client is caught early rather than silently stored.
 RESULTS = {
-    "cold",     # 裸答对 — correct on the first, no-hint attempt
-    "hint",     # 看提示后答对 — correct after the hint layer
-    "wrong",    # 答错 — guessed again with hints and still missed
-    "skip",     # 直接跳过看答案 — gave up / skipped straight to the answer
+    "FIRST_TRY_CORRECT",  # 一次答对 — correct on the first, no-hint attempt
+    "CUED_CORRECT",       # 提示后答对 — correct after the hint layer
+    "INCORRECT",          # 答错 — guessed again with hints and still missed
+    "REVEALED",           # 看了答案 — gave up / skipped straight to the answer
+}
+
+# Old lowercase buckets → new uppercase names. Applied once on connect so any
+# rows written before the rename are migrated in place, never left mixed.
+_LEGACY_RENAMES = {
+    "cold": "FIRST_TRY_CORRECT",
+    "hint": "CUED_CORRECT",
+    "wrong": "INCORRECT",
+    "skip": "REVEALED",
 }
 
 
@@ -43,6 +53,11 @@ def _connect() -> sqlite3.Connection:
         )
         """
     )
+    for old, new in _LEGACY_RENAMES.items():
+        conn.execute(
+            "UPDATE review_log SET result = ? WHERE result = ?", (new, old)
+        )
+    conn.commit()
     return conn
 
 
@@ -63,3 +78,55 @@ def record(
             "VALUES (?, ?, ?, ?, ?)",
             (page_id, expression, result, elapsed_seconds, created_at),
         )
+
+
+def history(page_id: str) -> dict | None:
+    """Per-expression practice history for the word-history component.
+
+    Returns None when the page has no attempts yet (the UI hides the block).
+    Otherwise: total attempts, how many were FIRST_TRY_CORRECT, and the most
+    recent attempt's result + timestamp. Recording-only read; no scheduling.
+    """
+    if not page_id:
+        return None
+    with _connect() as conn:
+        total, first_try = conn.execute(
+            "SELECT COUNT(*), "
+            "SUM(CASE WHEN result = 'FIRST_TRY_CORRECT' THEN 1 ELSE 0 END) "
+            "FROM review_log WHERE page_id = ?",
+            (page_id,),
+        ).fetchone()
+        if not total:
+            return None
+        last = conn.execute(
+            "SELECT result, created_at FROM review_log "
+            "WHERE page_id = ? ORDER BY id DESC LIMIT 1",
+            (page_id,),
+        ).fetchone()
+    return {
+        "total": total,
+        "first_try": first_try or 0,
+        "last_result": last[0],
+        "last_at": last[1],
+    }
+
+
+def today_count() -> int:
+    """Number of attempts recorded so far today, in the server's local day.
+
+    Timestamps are stored in UTC, so we compute the local day's [start, end)
+    and convert both bounds to UTC ISO strings — comparing against a bare local
+    date would miscount rows near midnight. Count only, no scheduling.
+    """
+    now_local = datetime.now().astimezone()
+    start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
+    end_local = start_local + timedelta(days=1)
+    start_utc = start_local.astimezone(timezone.utc).isoformat()
+    end_utc = end_local.astimezone(timezone.utc).isoformat()
+    with _connect() as conn:
+        (n,) = conn.execute(
+            "SELECT COUNT(*) FROM review_log "
+            "WHERE created_at >= ? AND created_at < ?",
+            (start_utc, end_utc),
+        ).fetchone()
+    return n

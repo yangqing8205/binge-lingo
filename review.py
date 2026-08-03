@@ -163,6 +163,23 @@ def api_review_log():
     return jsonify({"ok": True})
 
 
+@app.get("/api/word-history")
+def api_word_history():
+    """Practice history for one expression (the reveal-block word-history).
+
+    Read-only over the local log; returns {history: null} when the page has no
+    attempts yet so the UI can hide the block.
+    """
+    page_id = request.args.get("page_id", "")
+    return jsonify({"ok": True, "history": review_log.history(page_id)})
+
+
+@app.get("/api/today-count")
+def api_today_count():
+    """Attempts recorded so far today — the top-bar TODAY counter. Count only."""
+    return jsonify({"ok": True, "count": review_log.today_count()})
+
+
 # ---- 对话练习 (roleplay conversation practice) ----
 
 @app.get("/api/characters")
