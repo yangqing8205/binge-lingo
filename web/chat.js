@@ -4,6 +4,9 @@
 const chat = {
   characters: [],
   session: null, // { id, character, color, name, targets }
+  currentShow: "",     // show inferred from Notion Source (from /api/scene-context)
+  matchedKey: null,    // key of the character matching currentShow, if any
+  generating: false,   // a background for-show generation is in flight
 };
 
 const chatEl = {
@@ -46,42 +49,115 @@ async function loadCharacters() {
   }
 }
 
+// After the grid loads, figure out what the learner is watching (from their
+// Notion Source) and make sure a matching character is ready — surfaced first,
+// or generated in the background without blocking the rest of the list.
+async function prepareSceneCharacter() {
+  let ctx;
+  try {
+    const res = await fetch("/api/scene-context");
+    ctx = await res.json();
+  } catch (_) {
+    return; // best-effort; the built-ins are always available as fallback
+  }
+  if (!ctx || !ctx.ok || !ctx.show) return;
+  chat.currentShow = ctx.show;
+
+  if (ctx.matched) {
+    chat.matchedKey = ctx.matched.key;
+    renderCharGrid(); // reorders the matched character to the front + badge
+    return;
+  }
+  // No character for this show yet — generate one in the background.
+  chat.generating = true;
+  renderCharGrid(); // shows the loading placeholder at the front
+  try {
+    const res = await fetch("/api/characters/for-show", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ show: ctx.show }),
+    });
+    const data = await res.json();
+    chat.generating = false;
+    if (data.ok && data.character) {
+      chat.matchedKey = data.character.key;
+      await loadCharacters(); // pull in the new character…
+      renderCharGrid();       // …and reorder it to the front with the badge
+    } else {
+      renderCharGrid(); // drop the placeholder; built-ins remain usable
+    }
+  } catch (_) {
+    chat.generating = false;
+    renderCharGrid();
+  }
+}
+
+function makeCharCard(c, matched) {
+  const card = document.createElement("button");
+  card.className = "char-card" + (c.hidden ? " hidden-char" : "") +
+    (matched ? " char-card--matched" : "");
+  const badge = matched
+    ? '<span class="char-badge">来自你在看的《' + esc(chat.currentShow) + "》</span>"
+    : "";
+  card.innerHTML =
+    '<span class="char-avatar" style="background:' + esc(c.color) + '">' +
+    esc(initials(c.name)) +
+    '</span><span class="char-text">' + badge +
+    '<span class="char-cardname">' + esc(c.name) +
+    '</span><span class="char-intro">' + esc(c.intro) +
+    "</span></span>";
+  card.addEventListener("click", () => startChat(c));
+  // Custom characters get a delete button; built-ins can't be removed.
+  if (!c.is_builtin) {
+    const del = document.createElement("span");
+    del.className = "char-del";
+    del.textContent = "×";
+    del.title = "删除角色";
+    del.addEventListener("click", (e) => {
+      e.stopPropagation();
+      deleteCharacter(c);
+    });
+    card.appendChild(del);
+  }
+  return card;
+}
+
 function renderCharGrid() {
   chatEl.charGrid.innerHTML = "";
-  chat.characters.forEach((c) => {
-    const card = document.createElement("button");
-    card.className = "char-card" + (c.hidden ? " hidden-char" : "");
-    card.innerHTML =
-      '<span class="char-avatar" style="background:' + esc(c.color) + '">' +
-      esc(initials(c.name)) +
-      '</span><span class="char-text"><span class="char-cardname">' +
-      esc(c.name) +
-      '</span><span class="char-intro">' +
-      esc(c.intro) +
-      "</span></span>";
-    card.addEventListener("click", () => startChat(c));
-    // Custom characters get a delete button; built-ins can't be removed.
-    if (!c.is_builtin) {
-      const del = document.createElement("span");
-      del.className = "char-del";
-      del.textContent = "×";
-      del.title = "删除角色";
-      del.addEventListener("click", (e) => {
-        e.stopPropagation();
-        deleteCharacter(c);
-      });
-      card.appendChild(del);
-    }
-    chatEl.charGrid.appendChild(card);
-  });
 
-  // Trailing "+ 新建角色" card.
+  // Matched character (for the show being watched) leads the grid, then the
+  // rest in their normal order.
+  const list = chat.characters.slice();
+  let matched = null;
+  if (chat.matchedKey) {
+    const i = list.findIndex((c) => c.key === chat.matchedKey);
+    if (i !== -1) matched = list.splice(i, 1)[0];
+  }
+  if (matched) chatEl.charGrid.appendChild(makeCharCard(matched, true));
+
+  // While a for-show character is being generated, show a loading placeholder
+  // at the front — the rest of the list stays usable underneath.
+  if (chat.generating) {
+    const ph = document.createElement("div");
+    ph.className = "char-card char-card--loading";
+    ph.innerHTML =
+      '<span class="char-avatar char-avatar--loading">…</span>' +
+      '<span class="char-text"><span class="char-badge">来自你在看的《' +
+      esc(chat.currentShow) + "》</span>" +
+      '<span class="char-cardname">正在准备角色…</span>' +
+      '<span class="char-intro">根据你在看的剧自动生成，稍等片刻</span></span>';
+    chatEl.charGrid.appendChild(ph);
+  }
+
+  list.forEach((c) => chatEl.charGrid.appendChild(makeCharCard(c, false)));
+
+  // Trailing "+ 新建角色" card (secondary entry for adding other shows).
   const add = document.createElement("button");
   add.className = "char-card char-card--add";
   add.innerHTML =
     '<span class="char-avatar char-avatar--add">+</span>' +
     '<span class="char-text"><span class="char-cardname">新建角色</span>' +
-    '<span class="char-intro">用剧名和角色名生成一个</span></span>';
+    '<span class="char-intro">想练别的剧？手动加一个</span></span>';
   add.addEventListener("click", openCharModal);
   chatEl.charGrid.appendChild(add);
 }
@@ -324,4 +400,6 @@ function wireChat() {
 }
 
 wireChat();
-loadCharacters();
+// Load the grid first (built-ins show immediately), then prepare the
+// show-matched character — surfaced first, or generated in the background.
+loadCharacters().then(prepareSceneCharacter);

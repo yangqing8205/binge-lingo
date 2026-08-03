@@ -14,6 +14,7 @@ same place under `python review.py` and under gunicorn on Render.
 """
 from __future__ import annotations
 
+import re
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -155,8 +156,29 @@ def _connect() -> sqlite3.Connection:
         """
     )
     _seed_builtins(conn)
+    _repair_builtin_shows(conn)
     conn.commit()
     return conn
+
+
+def _repair_builtin_shows(conn: sqlite3.Connection) -> None:
+    """Fix built-in rows seeded by an earlier version that swapped source_show
+    and intro. Idempotent: restores each built-in's source_show/intro from the
+    canonical seed data by key. Harmless once rows are already correct."""
+    by_key = {b[0]: b for b in _BUILTINS}  # key -> (key,name,intro,color,hidden,persona)
+    rows = conn.execute(
+        "SELECT key, source_show, intro FROM characters WHERE is_builtin = 1"
+    ).fetchall()
+    for row in rows:
+        seed = by_key.get(row["key"])
+        if not seed:
+            continue
+        correct_intro = seed[2]
+        if row["source_show"] != _BUILTIN_SHOW or row["intro"] != correct_intro:
+            conn.execute(
+                "UPDATE characters SET source_show = ?, intro = ? WHERE key = ?",
+                (_BUILTIN_SHOW, correct_intro, row["key"]),
+            )
 
 
 def _seed_builtins(conn: sqlite3.Connection) -> None:
@@ -168,7 +190,7 @@ def _seed_builtins(conn: sqlite3.Connection) -> None:
             "(key, display_name, source_show, intro, color, persona_prompt, "
             " is_builtin, hidden, created_at) "
             "VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)",
-            (key, name, intro, _BUILTIN_SHOW, color, persona,
+            (key, name, _BUILTIN_SHOW, intro, color, persona,
              1 if hidden else 0, now),
         )
 
@@ -258,5 +280,50 @@ def delete(key: str) -> bool:
 def pick_color(seed: str) -> str:
     """Deterministic palette color for a new character, keyed off its name."""
     return _PALETTE[sum(ord(c) for c in seed) % len(_PALETTE)]
+
+
+# Trailing episode markers to strip so a Source like "Modern Family S3E5" (or
+# "... S03E05", "... 第3季第5集", "... EP12") reduces to the bare show name.
+_EPISODE_RE = re.compile(
+    r"[\s\-—·:：|]*"
+    r"(?:s\d{1,2}\s*e\d{1,3}"           # S3E5 / S03E05
+    r"|season\s*\d+.*"                   # Season 3 ...
+    r"|ep(?:isode)?\.?\s*\d+"            # EP12 / episode 12
+    r"|第\s*\d+\s*季.*"                  # 第3季...
+    r"|第\s*\d+\s*集)"                   # 第5集
+    r".*$",
+    re.IGNORECASE,
+)
+
+
+def show_from_source(source: str) -> str:
+    """Reduce a freeform Source string to just the show name.
+
+    "Modern Family S3E5" -> "Modern Family"; "绝命毒师 第2季第4集" -> "绝命毒师".
+    Returns "" for empty input.
+    """
+    s = (source or "").strip()
+    if not s:
+        return ""
+    return _EPISODE_RE.sub("", s).strip() or s
+
+
+def _norm_show(s: str) -> str:
+    return " ".join((s or "").lower().split())
+
+
+def find_by_show(show: str) -> dict | None:
+    """First character whose source_show matches `show` (case/space-insensitive).
+
+    Built-ins win ties (they sort first), so "Modern Family" resolves to a
+    built-in. Returns None when nothing matches.
+    """
+    target = _norm_show(show)
+    if not target:
+        return None
+    for c in list_characters():
+        if _norm_show(c["source_show"]) == target:
+            return c
+    return None
 
 

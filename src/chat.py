@@ -157,6 +157,30 @@ def _looks_renamed(original: str, generated: str) -> bool:
     return _edit_distance(o, g) >= 1
 
 
+def generate_persona_for_show(show: str) -> dict:
+    """Auto-pick the best conversational character from a show, then persona it.
+
+    Used when the learner's current show (from Notion Source) has no character
+    yet. The model chooses one character itself — favoring a talkative, vivid,
+    linguistically distinctive one good for daily-conversation practice — and
+    returns the same fields as generate_persona (display_name, intro, persona),
+    plus `character` (the original name it picked, for reference). Same rename
+    rules and backend retry apply.
+    """
+    show = (show or "").strip()
+    if not show:
+        raise ValueError("Show is required.")
+    pick_note = (
+        "The user did not name a character. Pick the SINGLE best character from "
+        "this show for everyday English conversation practice — someone who talks "
+        "a lot, has a vivid personality, and a distinctive way of speaking. State "
+        "whom you picked, then build the persona for them."
+    )
+    # Reuse generate_persona's machinery by passing the picked-character prompt as
+    # the 'character' slot description; the prompt already enforces the rename.
+    return generate_persona(show, "(you choose the best character)", pick_note)
+
+
 def generate_persona(show: str, character: str, note: str = "") -> dict:
     """Generate the persona layer for a new character via the model.
 

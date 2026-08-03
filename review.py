@@ -59,6 +59,25 @@ def _is_public_static(path: str) -> bool:
     return os.path.isfile(candidate)
 
 
+@app.errorhandler(Exception)
+def _json_errors_for_api(exc):
+    """Any unhandled error under /api/* returns JSON, never Flask's HTML page.
+
+    Without this, an exception in an API handler yields a text/html 500 starting
+    with '<!doctype', which the frontend then fails to JSON.parse. Non-API routes
+    keep their normal rendering: HTTPExceptions (404, etc.) are returned as-is and
+    genuine crashes fall through to Flask's default 500.
+    """
+    from werkzeug.exceptions import HTTPException
+
+    if request.path.startswith("/api/"):
+        code = exc.code if isinstance(exc, HTTPException) else 500
+        return jsonify({"ok": False, "error": str(exc)}), code
+    if isinstance(exc, HTTPException):
+        return exc  # render the normal HTML error page for this status
+    raise exc  # genuine unexpected error on a page route → default 500
+
+
 @app.before_request
 def require_login():
     if session.get("authed"):
@@ -202,20 +221,75 @@ def api_characters_create():
         return jsonify({"ok": False, "error": "剧名和角色名都要填。"}), 400
     try:
         persona = chat.generate_persona(show, character, note)
+        # Persist inside the try too: a DB write failure must still return JSON,
+        # not Flask's default HTML 500 (which breaks the frontend's JSON parse).
+        color = characters.pick_color(persona["display_name"] or character)
+        created = characters.add(
+            source_show=show,
+            display_name=persona["display_name"] or character,
+            intro=persona["intro"],
+            color=color,
+            persona=persona["persona"],
+        )
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
-    except Exception as exc:  # noqa: BLE001 — surface generation failures to the UI
+    except Exception as exc:  # noqa: BLE001 — surface any failure to the UI as JSON
         return jsonify({"ok": False, "error": str(exc)}), 502
-
-    color = characters.pick_color(persona["display_name"] or character)
-    created = characters.add(
-        source_show=show,
-        display_name=persona["display_name"] or character,
-        intro=persona["intro"],
-        color=color,
-        persona=persona["persona"],
-    )
     return jsonify({"ok": True, "character": created})
+
+
+@app.get("/api/scene-context")
+def api_scene_context():
+    """What show is the learner currently watching, and is a character ready?
+
+    Reads the most recent non-empty Source across Notion cards to infer the
+    show, then reports whether a matching character already exists. The frontend
+    uses this to surface a show-matched character first (or trigger background
+    generation). Never fails hard — an empty show just means "no match".
+    """
+    show = ""
+    try:
+        cards = notion_reader.fetch_cards()
+        for c in cards:  # cards are newest-first; take the first with a Source
+            s = characters.show_from_source(c.get("source", ""))
+            if s:
+                show = s
+                break
+    except Exception:  # noqa: BLE001 — scene hint is best-effort, never blocking
+        show = ""
+    matched = characters.find_by_show(show) if show else None
+    return jsonify({"ok": True, "show": show, "matched": matched})
+
+
+@app.post("/api/characters/for-show")
+def api_characters_for_show():
+    """Auto-generate one character for a show (LLM picks who), then persist it.
+
+    Idempotent per show: if a character already exists for it, return that one
+    instead of generating a duplicate.
+    """
+    data = request.get_json(silent=True) or {}
+    show = characters.show_from_source(str(data.get("show", "")))
+    if not show:
+        return jsonify({"ok": False, "error": "没有识别到剧名。"}), 400
+    existing = characters.find_by_show(show)
+    if existing:
+        return jsonify({"ok": True, "character": existing, "reused": True})
+    try:
+        persona = chat.generate_persona_for_show(show)
+        color = characters.pick_color(persona["display_name"] or show)
+        created = characters.add(
+            source_show=show,
+            display_name=persona["display_name"] or show,
+            intro=persona["intro"],
+            color=color,
+            persona=persona["persona"],
+        )
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception as exc:  # noqa: BLE001 — surface to the UI as JSON
+        return jsonify({"ok": False, "error": str(exc)}), 502
+    return jsonify({"ok": True, "character": created, "reused": False})
 
 
 @app.delete("/api/characters/<key>")
