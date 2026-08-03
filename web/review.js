@@ -46,8 +46,7 @@ const el = {
   wordhist: $("wordhist"),
   whProg: $("wh-prog"),
   whPct: $("wh-pct"),
-  whLine1: $("wh-line1"),
-  whLine2: $("wh-line2"),
+  whTip: $("wh-tip"),
   today: $("today"),
   prev: $("prev"),
   next: $("next"),
@@ -60,12 +59,12 @@ const STAMPS = {
   revealed: { cls: "wine", text: "REVEALED", note: "Review this one again soon." },
 };
 
-// Chinese labels for the stored uppercase result enums. The UI never shows the
-// enum names themselves.
-const RESULT_ZH = {
+// Chinese verb phrases for "上次…" in the ring tooltip. The UI never shows the
+// uppercase enum names themselves.
+const LAST_RESULT_ZH = {
   FIRST_TRY_CORRECT: "一次答对",
   CUED_CORRECT: "提示后答对",
-  INCORRECT: "答错",
+  INCORRECT: "答错了",
   REVEALED: "看了答案",
 };
 
@@ -165,12 +164,12 @@ async function renderWordHistory(card) {
   const ratio = h.total ? h.first_try / h.total : 0;
   drawRing(ratio);
   el.whPct.textContent = Math.round(ratio * 100) + "%";
-  el.whLine1.innerHTML =
-    '<span class="big">' + h.total + "</span> 次练习 · " +
-    '<span class="big">' + h.first_try + "</span> 次 FIRST TRY";
+  // Everything lives in the hover tooltip now — the ring stays uncluttered.
   const when = daysAgoZh(h.last_at);
-  const label = RESULT_ZH[h.last_result] || "";
-  el.whLine2.textContent = "上次 " + when + (label ? " · " + label : "");
+  const verb = LAST_RESULT_ZH[h.last_result] || "";
+  const last = "上次 " + when + (verb ? " " + verb : "");
+  el.whTip.textContent =
+    "练过 " + h.total + " 次 · 一次答对 " + h.first_try + " 次 · " + last;
   el.wordhist.hidden = false;
 }
 

@@ -93,16 +93,14 @@
                 <div class="ev-line" id="ev-line"></div>
                 <div class="ev-answer-row">
                   <div class="ev-answer" id="ev-answer"></div>
-                  <div class="wordhist" id="wordhist" hidden>
+                  <div class="wordhist" id="wordhist" hidden tabindex="0"
+                       aria-describedby="wh-tip">
                     <svg class="wordhist__ring" viewBox="0 0 48 48" aria-hidden="true">
                       <circle class="wordhist__track" cx="24" cy="24" r="21" />
                       <circle class="wordhist__prog" id="wh-prog" cx="24" cy="24" r="21" />
                       <text class="wordhist__pct" id="wh-pct" x="24" y="24">0%</text>
                     </svg>
-                    <div class="wordhist__text">
-                      <div class="wordhist__line1" id="wh-line1"></div>
-                      <div class="wordhist__line2" id="wh-line2"></div>
-                    </div>
+                    <div class="wordhist__tip" id="wh-tip" role="tooltip"></div>
                   </div>
                 </div>
                 <div class="ev-cn" id="ev-cn"></div>

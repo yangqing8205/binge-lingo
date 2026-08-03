@@ -58,6 +58,20 @@ def _plain_text(prop: dict) -> str:
     return "".join(p.get("plain_text", "") for p in parts).strip()
 
 
+def _clean_structure(structure: str, expression: str) -> str:
+    """Return the collocation frame, but drop it if it just echoes the expression.
+
+    New cards never store a verbatim echo (vision.py guards it), but old cards
+    written before the AI field existed may have none, and any future stray
+    duplicate should still be hidden rather than shown as '常见结构: <title>'.
+    """
+    s = (structure or "").strip()
+    if not s:
+        return ""
+    norm = lambda t: re.sub(r"\s+", " ", t.lower()).strip().strip(".!?,;: ")
+    return "" if norm(s) == norm(expression or "") else s
+
+
 def _first_image_url(page_id: str) -> str:
     """Return the URL of the first image block in the page body, or ''."""
     try:
@@ -156,8 +170,12 @@ def _page_to_card(page: dict) -> dict:
         "review_kind": review_kind,
         # Layer 2 hints (generated server-side).
         "initials_hint": matching.initials_hint(expression),
-        # Layer 3 extras.
-        "common_structure": matching.common_structure(expression, example),
+        # Layer 3 extras: AI-authored collocation frame. Guard against legacy
+        # rows that stored the expression verbatim — show nothing rather than a
+        # duplicate of the title.
+        "common_structure": _clean_structure(
+            _plain_text(props.get("CommonStructure")), expression
+        ),
     }
 
 

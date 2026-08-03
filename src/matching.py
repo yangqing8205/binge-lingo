@@ -170,16 +170,3 @@ def initials_hint(expression: str) -> str:
             continue
         parts.append(raw[0] + "_" * (len(raw) - 1))
     return " ".join(parts)
-
-
-def common_structure(expression: str, example: str = "") -> str:
-    """A short 'typical form' hint shown in the final layer.
-
-    We don't have a dedicated field for this, so we derive it: if the expression
-    starts with a bare base verb, prefix "be " to signal the usual copular frame
-    (e.g. "hang by a thread" → "be hanging by a thread" is not attempted — we
-    keep it honest and just present the canonical expression). Callers may show
-    this alongside the verbatim Example line.
-    """
-    expr = str(expression or "").strip()
-    return expr

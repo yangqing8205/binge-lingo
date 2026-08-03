@@ -48,7 +48,7 @@ def _ensure_review_sentence_property() -> None:
 
     Notion rejects page creates that set an unknown property, so a fresh
     database (created before a field existed) needs it added once. Covers
-    ReviewSentence and Source. Idempotent and cached per process.
+    ReviewSentence, Source, and CommonStructure. Idempotent and cached per process.
     """
     global _schema_checked
     if _schema_checked:
@@ -58,7 +58,7 @@ def _ensure_review_sentence_property() -> None:
     props = ds.get("properties", {})
     missing = {
         name: {"rich_text": {}}
-        for name in ("ReviewSentence", "Source")
+        for name in ("ReviewSentence", "Source", "CommonStructure")
         if name not in props
     }
     if missing:
@@ -96,6 +96,10 @@ def _properties(expr: Expression, screenshot_name: str, source: str = "") -> dic
         "ReviewSentence": _rich_text(expr.review_sentence),
         "Screenshot": _rich_text(screenshot_name),
     }
+    # Only set CommonStructure when the model gave a real frame; empty means the
+    # expression is fixed, so leave the property unset rather than storing "".
+    if expr.common_structure:
+        props["CommonStructure"] = _rich_text(expr.common_structure)
     # Only set Source when the watch session provided one; otherwise leave it
     # unset so the field stays empty and can be filled in by hand as before.
     if source:

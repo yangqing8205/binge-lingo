@@ -73,6 +73,23 @@ Your job:
      "You've missed three easy shots in a row today. What's going on — you're
      usually so sharp out there. Are you feeling okay, or are you just ___?"
 
+7. Also give a `common_structure`: the expression's IDIOMATIC COLLOCATION FRAME,
+   written with placeholders for the slots a speaker fills in — NOT the expression
+   copied verbatim. Use `sb.` / `sth.` for people/things, `one's` for possessives,
+   and `(...)` for optional parts. Separate genuinely distinct patterns with ` / `.
+   Examples:
+     - "pull through"      -> "pull sb. through / pull through sth."
+     - "hang by a thread"  -> "be hanging by a thread"
+     - "flip out"          -> "flip out (on sb.)"
+     - "get the hang of"   -> "get the hang of sth."
+   HARD RULES:
+   - The value MUST NOT be identical to `expression`. If the only thing you could
+     write is the expression itself, that means it has no useful frame — return an
+     empty string "" instead.
+   - If the expression is already a fixed, invariant form with no slots or
+     collocation variants to teach, return an empty string "".
+   - Keep it to the frame only — no Chinese, no explanation, no example sentence.
+
 Always report your result by calling the `report_expressions` tool.
 """
 
@@ -111,6 +128,14 @@ _TOOL = {
                             "practice, related to the scene, with the target "
                             "expression replaced by exactly three underscores ___.",
                         },
+                        "common_structure": {
+                            "type": "string",
+                            "description": "The expression's idiomatic collocation "
+                            "frame with placeholders (sb./sth./one's/optional "
+                            "parts), e.g. 'pull sb. through / pull through sth.'. "
+                            "MUST NOT equal the expression verbatim; empty string "
+                            "if the form is fixed with no variant to teach.",
+                        },
                     },
                     "required": [
                         "expression",
@@ -119,6 +144,7 @@ _TOOL = {
                         "original_line",
                         "difficulty",
                         "review_sentence",
+                        "common_structure",
                     ],
                 },
             },
@@ -142,6 +168,7 @@ _FIELD_KEYS = (
     "original_line",
     "difficulty",
     "review_sentence",
+    "common_structure",
 )
 
 
@@ -196,7 +223,8 @@ def _salvage_object(chunk: str) -> dict | None:
         "scenario_zh": _extract_field(chunk, "scenario_zh", is_last=False),
         "original_line": _extract_field(chunk, "original_line", is_last=False),
         "difficulty": _extract_field(chunk, "difficulty", is_last=False),
-        "review_sentence": _extract_field(chunk, "review_sentence", is_last=True),
+        "review_sentence": _extract_field(chunk, "review_sentence", is_last=False),
+        "common_structure": _extract_field(chunk, "common_structure", is_last=True),
     }
 
 
@@ -233,19 +261,32 @@ def _coerce_expression_list(raw) -> list:
     return []
 
 
+def _norm_structure(s: str) -> str:
+    """Loose key for the 'structure == expression' guard: lowercase, collapse
+    whitespace, drop trailing punctuation, so 'Pull through.' == 'pull through'."""
+    return re.sub(r"\s+", " ", str(s or "").lower()).strip().strip(".!?,;: ")
+
+
 def _parse_payload(payload: dict) -> ScreenshotAnalysis:
     expressions = []
     for item in _coerce_expression_list(payload.get("expressions", [])):
         if not isinstance(item, dict):
             continue
+        expr_text = str(item.get("expression", "")).strip()
+        structure = str(item.get("common_structure", "")).strip()
+        # Belt-and-suspenders against the very thing this field exists to avoid:
+        # if the model echoed the expression verbatim, treat it as "no frame".
+        if _norm_structure(structure) == _norm_structure(expr_text):
+            structure = ""
         expressions.append(
             Expression(
-                expression=str(item.get("expression", "")).strip(),
+                expression=expr_text,
                 meaning_zh=str(item.get("meaning_zh", "")).strip(),
                 scenario_zh=str(item.get("scenario_zh", "")).strip(),
                 original_line=str(item.get("original_line", "")).strip(),
                 difficulty=str(item.get("difficulty", "")).strip(),
                 review_sentence=str(item.get("review_sentence", "")).strip(),
+                common_structure=structure,
             )
         )
     expressions = [e for e in expressions if e.expression]

@@ -15,6 +15,9 @@ class Expression:
     original_line: str       # the original subtitle line, verbatim
     difficulty: str = ""     # 初级 / 中级 / 高级
     review_sentence: str = "" # AI-made NEW cloze sentence for review (blank = ___)
+    common_structure: str = "" # idiomatic frame w/ placeholders, e.g.
+    #                            "pull sb. through / pull through sth."; "" if the
+    #                            expression is fixed and has no collocation variant.
 
 
 @dataclass
