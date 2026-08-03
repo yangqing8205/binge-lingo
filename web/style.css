@@ -687,6 +687,75 @@ body {
   margin-top: 3px;
 }
 .char-card.hidden-char { border-style: dashed; opacity: .85; }
+.char-card { position: relative; }
+/* delete button on custom characters */
+.char-del {
+  position: absolute;
+  top: 6px;
+  right: 8px;
+  width: 20px;
+  height: 20px;
+  line-height: 18px;
+  text-align: center;
+  border-radius: 50%;
+  color: var(--gray);
+  font-size: 16px;
+  opacity: 0;
+  transition: opacity .12s, background .12s, color .12s;
+}
+.char-card:hover .char-del { opacity: 1; }
+.char-del:hover { background: var(--accent); color: #fff; }
+/* the "+ 新建角色" card */
+.char-card--add { border-style: dashed; background: #fffdf8; }
+.char-avatar--add { background: transparent; color: var(--accent); font-size: 26px; border: 1px dashed var(--accent); }
+/* new-character modal */
+.char-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: grid;
+  place-items: center;
+  background: rgba(43,36,32,.45);
+}
+.char-modal__box {
+  width: min(420px, 90vw);
+  background: var(--cream);
+  border: 1px solid var(--line-strong);
+  border-radius: 10px;
+  padding: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.char-modal__title {
+  font-family: var(--font-serif);
+  font-weight: 600;
+  font-size: 18px;
+  color: var(--ink);
+}
+.char-modal__label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--ink-soft);
+}
+.char-modal__label input {
+  font-family: var(--font-body);
+  font-size: 14px;
+  padding: 8px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: #fffdf8;
+  color: var(--ink);
+}
+.char-modal__err { font-size: 13px; color: var(--accent); }
+.char-modal__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 4px;
+}
 /* ============ chat room ============ */
 .chat-room {
   background: #fffdf8;

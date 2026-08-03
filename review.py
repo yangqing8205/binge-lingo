@@ -19,7 +19,7 @@ from flask import (
     session,
 )
 
-from src import chat, config, matching, notion_reader, review_log
+from src import characters, chat, config, matching, notion_reader, review_log
 
 # Resolve paths from this file's location, never the process CWD: under gunicorn
 # on Render the working directory is not guaranteed to be the repo root, so any
@@ -185,6 +185,45 @@ def api_today_count():
 @app.get("/api/characters")
 def api_characters():
     return jsonify({"ok": True, "characters": chat.list_characters()})
+
+
+@app.post("/api/characters")
+def api_characters_create():
+    """Generate a custom character's persona and persist it.
+
+    Body: {show, character, note?}. The model writes only the persona layer;
+    teaching rules come from the shared template. Returns the new character.
+    """
+    data = request.get_json(silent=True) or {}
+    show = str(data.get("show", "")).strip()
+    character = str(data.get("character", "")).strip()
+    note = str(data.get("note", "")).strip()
+    if not show or not character:
+        return jsonify({"ok": False, "error": "剧名和角色名都要填。"}), 400
+    try:
+        persona = chat.generate_persona(show, character, note)
+    except ValueError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    except Exception as exc:  # noqa: BLE001 — surface generation failures to the UI
+        return jsonify({"ok": False, "error": str(exc)}), 502
+
+    color = characters.pick_color(persona["display_name"] or character)
+    created = characters.add(
+        source_show=show,
+        display_name=persona["display_name"] or character,
+        intro=persona["intro"],
+        color=color,
+        persona=persona["persona"],
+    )
+    return jsonify({"ok": True, "character": created})
+
+
+@app.delete("/api/characters/<key>")
+def api_characters_delete(key: str):
+    """Delete a custom character. Built-ins are protected (400)."""
+    if characters.delete(key):
+        return jsonify({"ok": True})
+    return jsonify({"ok": False, "error": "内置角色不可删除，或角色不存在。"}), 400
 
 
 @app.post("/api/chat/start")

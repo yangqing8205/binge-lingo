@@ -44,6 +44,26 @@
               <div class="char-grid" id="char-grid"></div>
             </section>
 
+            <div class="char-modal" id="char-modal" hidden>
+              <div class="char-modal__box">
+                <div class="char-modal__title">新建角色</div>
+                <label class="char-modal__label">剧名
+                  <input id="new-show" type="text" autocomplete="off" placeholder="例如：绝命毒师" />
+                </label>
+                <label class="char-modal__label">角色名
+                  <input id="new-name" type="text" autocomplete="off" placeholder="例如：Jesse Pinkman" />
+                </label>
+                <label class="char-modal__label">补充描述（可选）
+                  <input id="new-note" type="text" autocomplete="off" placeholder="一句话，比如：暴躁但讲义气" />
+                </label>
+                <div class="char-modal__err" id="new-err" hidden></div>
+                <div class="char-modal__actions">
+                  <button class="nav-btn" id="new-cancel">取消</button>
+                  <button class="btn-submit" id="new-create">生成角色</button>
+                </div>
+              </div>
+            </div>
+
             <section id="chat-room" class="chat-room" hidden>
               <header class="chat-head">
                 <div class="chat-who">

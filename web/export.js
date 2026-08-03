@@ -143,9 +143,18 @@ function build() {
     sceneLine = "Setting: " + SCENE.find((s) => s.v === ex.sel.scene).line;
   }
 
-  const personaLine = char
-    ? "You are " + char.name + ", " + char.persona
-    : "You are a friendly conversation partner.";
+  // Include the source show so an external AI can better reconstruct the
+  // character. The persona already opens with "You are <name>, ...", so prepend
+  // the show as context rather than duplicating the name.
+  let personaLine;
+  if (char) {
+    const show = (char.source_show || "").trim();
+    personaLine = show
+      ? "Roleplay as this character from " + show + ".\n" + char.persona
+      : char.persona;
+  } else {
+    personaLine = "You are a friendly conversation partner.";
+  }
 
   const targetBlock = targets.length
     ? targets.map((t) => "- " + t).join("\n")

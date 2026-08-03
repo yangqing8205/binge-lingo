@@ -25,6 +25,13 @@ const chatEl = {
   critiqueStamp: $("critique-stamp"),
   critiqueBody: $("critique-body"),
   critiqueAgain: $("critique-again"),
+  modal: $("char-modal"),
+  newShow: $("new-show"),
+  newName: $("new-name"),
+  newNote: $("new-note"),
+  newErr: $("new-err"),
+  newCancel: $("new-cancel"),
+  newCreate: $("new-create"),
 };
 
 async function loadCharacters() {
@@ -53,8 +60,101 @@ function renderCharGrid() {
       esc(c.intro) +
       "</span></span>";
     card.addEventListener("click", () => startChat(c));
+    // Custom characters get a delete button; built-ins can't be removed.
+    if (!c.is_builtin) {
+      const del = document.createElement("span");
+      del.className = "char-del";
+      del.textContent = "×";
+      del.title = "删除角色";
+      del.addEventListener("click", (e) => {
+        e.stopPropagation();
+        deleteCharacter(c);
+      });
+      card.appendChild(del);
+    }
     chatEl.charGrid.appendChild(card);
   });
+
+  // Trailing "+ 新建角色" card.
+  const add = document.createElement("button");
+  add.className = "char-card char-card--add";
+  add.innerHTML =
+    '<span class="char-avatar char-avatar--add">+</span>' +
+    '<span class="char-text"><span class="char-cardname">新建角色</span>' +
+    '<span class="char-intro">用剧名和角色名生成一个</span></span>';
+  add.addEventListener("click", openCharModal);
+  chatEl.charGrid.appendChild(add);
+}
+
+function openCharModal() {
+  chatEl.newShow.value = "";
+  chatEl.newName.value = "";
+  chatEl.newNote.value = "";
+  chatEl.newErr.hidden = true;
+  chatEl.newErr.textContent = "";
+  chatEl.newCreate.disabled = false;
+  chatEl.newCreate.textContent = "生成角色";
+  chatEl.modal.hidden = false;
+  chatEl.newShow.focus();
+}
+
+function closeCharModal() {
+  chatEl.modal.hidden = true;
+}
+
+async function createCharacter() {
+  const show = chatEl.newShow.value.trim();
+  const character = chatEl.newName.value.trim();
+  const note = chatEl.newNote.value.trim();
+  if (!show || !character) {
+    chatEl.newErr.hidden = false;
+    chatEl.newErr.textContent = "剧名和角色名都要填。";
+    return;
+  }
+  chatEl.newErr.hidden = true;
+  chatEl.newCreate.disabled = true;
+  chatEl.newCreate.textContent = "生成中…（约十几秒）";
+  try {
+    const res = await fetch("/api/characters", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ show, character, note }),
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      chatEl.newErr.hidden = false;
+      chatEl.newErr.textContent = "生成失败：" + (data.error || "未知错误");
+      chatEl.newCreate.disabled = false;
+      chatEl.newCreate.textContent = "生成角色";
+      return;
+    }
+    closeCharModal();
+    await loadCharacters();
+    // Jump straight into a chat with the freshly made character.
+    startChat(data.character);
+  } catch (err) {
+    chatEl.newErr.hidden = false;
+    chatEl.newErr.textContent = "无法连接：" + err.message;
+    chatEl.newCreate.disabled = false;
+    chatEl.newCreate.textContent = "生成角色";
+  }
+}
+
+async function deleteCharacter(c) {
+  if (!confirm("删除角色「" + c.name + "」？")) return;
+  try {
+    const res = await fetch("/api/characters/" + encodeURIComponent(c.key), {
+      method: "DELETE",
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      alert("删除失败：" + (data.error || "未知错误"));
+      return;
+    }
+    await loadCharacters();
+  } catch (err) {
+    alert("无法连接：" + err.message);
+  }
 }
 
 function bubble(role, text) {
@@ -212,6 +312,14 @@ function wireChat() {
   chatEl.critiqueAgain.addEventListener("click", backToChars);
   chatEl.targetsToggle.addEventListener("click", () => {
     chatEl.targetsList.hidden = !chatEl.targetsList.hidden;
+  });
+  chatEl.newCancel.addEventListener("click", closeCharModal);
+  chatEl.newCreate.addEventListener("click", createCharacter);
+  chatEl.modal.addEventListener("click", (e) => {
+    if (e.target === chatEl.modal) closeCharModal(); // click backdrop to dismiss
+  });
+  chatEl.newNote.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") { e.preventDefault(); createCharacter(); }
   });
 }
 
