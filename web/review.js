@@ -55,8 +55,8 @@ const el = {
 };
 
 const STAMPS = {
-  cold: { cls: "gold", text: "COLD RECALL ✓", note: "You recognized it in a brand new context." },
-  hint: { cls: "", text: "RECALLED WITH A HINT", note: "You got it with a little help." },
+  cold: { cls: "gold", text: "FIRST TRY ✓", note: "You recognized it in a brand new context." },
+  hint: { cls: "", text: "CUED RECALL", note: "You got it with a little help." },
   revealed: { cls: "wine", text: "REVEALED", note: "Review this one again soon." },
 };
 
@@ -69,8 +69,8 @@ const RESULT_ZH = {
   REVEALED: "看了答案",
 };
 
-// r=28.5 in the 64-viewBox ring; keep in sync with .wordhist circles' r.
-const RING_CIRC = 2 * Math.PI * 28.5;
+// r=21 in the 48-viewBox ring; keep in sync with .wordhist circles' r.
+const RING_CIRC = 2 * Math.PI * 21;
 
 // "今天" / "昨天" / "N 天前" from a UTC ISO timestamp, by local calendar day.
 function daysAgoZh(iso) {
@@ -143,7 +143,7 @@ function drawRing(ratio) {
   el.whProg.setAttribute("stroke-dashoffset", "0");
 }
 
-// Fetch and render the per-expression practice history under the explanation.
+// Fetch and render the per-expression practice history beside the title.
 // Hidden entirely when the expression has no recorded attempts. Its own render
 // is async and race-guarded so paging away mid-fetch can't paint stale data.
 async function renderWordHistory(card) {

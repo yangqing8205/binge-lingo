@@ -503,12 +503,18 @@ body {
   margin-bottom: 14px;
 }
 .ev-line:empty { display: none; }
+.ev-answer-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 8px;
+}
 .ev-answer {
   font-family: var(--font-serif);
   font-weight: 600;
   font-size: 27px;
   color: var(--accent);
-  margin-bottom: 8px;
 }
 .ev-cn { font-size: 17px; margin-bottom: 6px; }
 .ev-context { font-size: 14px; color: var(--ink-soft); line-height: 1.65; }
@@ -526,16 +532,14 @@ body {
   color: var(--gray);
   font-style: italic;
 }
-/* ---- word history (per-expression practice recap) ---- */
+/* ---- word history (per-expression practice recap, beside the title) ---- */
 .wordhist {
   display: flex;
   align-items: center;
-  gap: 16px;
-  margin-top: 22px;
-  padding-top: 18px;
-  border-top: 1px solid rgba(0,0,0,.07);
+  gap: 10px;
+  flex: 0 0 auto; /* hug its content so the title keeps the left space */
 }
-.wordhist__ring { width: 64px; height: 64px; flex: 0 0 64px; }
+.wordhist__ring { width: 48px; height: 48px; flex: 0 0 48px; }
 .wordhist__track,
 .wordhist__prog {
   fill: none;
@@ -552,18 +556,23 @@ body {
 .wordhist__pct {
   fill: var(--ink);
   font-family: var(--font-serif);
-  font-size: 15px;
+  font-size: 12px;
   text-anchor: middle;
   dominant-baseline: central;
 }
-.wordhist__text { line-height: 1.5; }
-.wordhist__line1 { font-size: 14px; color: var(--ink); }
+.wordhist__text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.35;
+  text-align: right;
+}
+.wordhist__line1 { font-size: 12px; color: var(--ink); white-space: nowrap; }
 .wordhist__line1 .big {
   font-family: "Playfair Display", Georgia, serif;
-  font-size: 16px;
+  font-size: 14px;
   font-weight: 700;
 }
-.wordhist__line2 { margin-top: 3px; font-size: 12px; color: var(--gray); }
+.wordhist__line2 { font-size: 11px; color: var(--gray); white-space: nowrap; }
 /* ---- top-bar TODAY counter ---- */
 .today {
   font-family: var(--font-tab);
