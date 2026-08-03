@@ -21,7 +21,13 @@ from flask import (
 
 from src import chat, config, matching, notion_reader
 
-app = Flask(__name__, static_folder="web", static_url_path="")
+# Resolve paths from this file's location, never the process CWD: under gunicorn
+# on Render the working directory is not guaranteed to be the repo root, so any
+# relative "web" path would fail to find the static assets.
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+WEB_DIR = os.path.join(BASE_DIR, "web")
+
+app = Flask(__name__, static_folder=WEB_DIR, static_url_path="")
 
 PORT = 5001
 
@@ -34,16 +40,30 @@ APP_PASSWORD = os.getenv("APP_PASSWORD", "9713.jiayouYQ")
 app.secret_key = os.getenv("SECRET_KEY", secrets.token_hex(32))
 # Endpoints reachable without a valid session.
 _PUBLIC_PATHS = {"/login", "/favicon.ico"}
-# Static assets (css/js/fonts) carry no secrets, so the login page can load them
-# before authentication. Card/character data is behind /api/ and stays gated.
-_PUBLIC_SUFFIXES = (".css", ".js", ".ico", ".png", ".svg", ".woff", ".woff2")
+
+
+def _is_public_static(path: str) -> bool:
+    """True if the request targets a real file under web/ (css/js/fonts/etc.).
+
+    These carry no secrets, so the login page can load them before auth. We
+    resolve against the actual files on disk rather than a hand-kept suffix
+    list, and confine the lookup to WEB_DIR so a crafted path can't escape it.
+    Card/character data lives behind /api/ and stays gated.
+    """
+    rel = path.lstrip("/")
+    if not rel:
+        return False
+    candidate = os.path.normpath(os.path.join(WEB_DIR, rel))
+    if os.path.commonpath([candidate, WEB_DIR]) != WEB_DIR:
+        return False
+    return os.path.isfile(candidate)
 
 
 @app.before_request
 def require_login():
     if session.get("authed"):
         return None
-    if request.path in _PUBLIC_PATHS or request.path.endswith(_PUBLIC_SUFFIXES):
+    if request.path in _PUBLIC_PATHS or _is_public_static(request.path):
         return None
     # API callers get a clean 401 so the UI can react; pages redirect to login.
     if request.path.startswith("/api/"):
@@ -55,7 +75,7 @@ def require_login():
 def login_page():
     if session.get("authed"):
         return redirect("/review")
-    return send_from_directory("web", "login.html")
+    return send_from_directory(WEB_DIR, "login.html")
 
 
 @app.post("/login")
@@ -82,17 +102,17 @@ def index():
 
 @app.get("/review")
 def page_review():
-    return send_from_directory("web", "review.html")
+    return send_from_directory(WEB_DIR, "review.html")
 
 
 @app.get("/chat")
 def page_chat():
-    return send_from_directory("web", "chat.html")
+    return send_from_directory(WEB_DIR, "chat.html")
 
 
 @app.get("/export")
 def page_export():
-    return send_from_directory("web", "export.html")
+    return send_from_directory(WEB_DIR, "export.html")
 
 
 @app.get("/api/cards")
