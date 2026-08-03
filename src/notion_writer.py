@@ -44,23 +44,25 @@ _schema_checked = False
 
 
 def _ensure_review_sentence_property() -> None:
-    """Add the ReviewSentence rich_text property if the schema lacks it.
+    """Add rich_text properties the writer sets, if the schema lacks them.
 
     Notion rejects page creates that set an unknown property, so a fresh
-    database (created before this field existed) needs it added once. Idempotent
-    and cached per process.
+    database (created before a field existed) needs it added once. Covers
+    ReviewSentence and Source. Idempotent and cached per process.
     """
     global _schema_checked
     if _schema_checked:
         return
     source_id = _resolve_data_source_id()
-    source = _client.data_sources.retrieve(source_id)
-    props = source.get("properties", {})
-    if "ReviewSentence" not in props:
-        _client.data_sources.update(
-            data_source_id=source_id,
-            properties={"ReviewSentence": {"rich_text": {}}},
-        )
+    ds = _client.data_sources.retrieve(source_id)
+    props = ds.get("properties", {})
+    missing = {
+        name: {"rich_text": {}}
+        for name in ("ReviewSentence", "Source")
+        if name not in props
+    }
+    if missing:
+        _client.data_sources.update(data_source_id=source_id, properties=missing)
     _schema_checked = True
 
 
@@ -84,21 +86,31 @@ def _image_block(descriptor: dict) -> dict:
     }
 
 
-def _properties(expr: Expression, screenshot_name: str) -> dict:
-    return {
+def _properties(expr: Expression, screenshot_name: str, source: str = "") -> dict:
+    props = {
         "Expression": _title(expr.expression),
         "Chinese": _rich_text(expr.meaning_zh),
         "Context": _rich_text(expr.scenario_zh),
         "Difficulty": _rich_text(expr.difficulty),
         "Example": _rich_text(expr.original_line),
         "ReviewSentence": _rich_text(expr.review_sentence),
-        # Source left empty on purpose — filled in manually.
         "Screenshot": _rich_text(screenshot_name),
     }
+    # Only set Source when the watch session provided one; otherwise leave it
+    # unset so the field stays empty and can be filled in by hand as before.
+    if source:
+        props["Source"] = _rich_text(source)
+    return props
 
 
-def write_entry(analysis: ScreenshotAnalysis, screenshot_path: Path) -> list[str]:
-    """Create one row per expression. Returns the created page URLs."""
+def write_entry(
+    analysis: ScreenshotAnalysis, screenshot_path: Path, source: str = ""
+) -> list[str]:
+    """Create one row per expression. Returns the created page URLs.
+
+    `source` (e.g. "Modern Family S3E5") is stamped onto every row when set;
+    empty means the Source field is left blank.
+    """
     _ensure_review_sentence_property()
     parent = {"type": "data_source_id", "data_source_id": _resolve_data_source_id()}
     urls: list[str] = []
@@ -109,7 +121,7 @@ def write_entry(analysis: ScreenshotAnalysis, screenshot_path: Path) -> list[str
         descriptor = uploader.upload_image(screenshot_path)
         page = _client.pages.create(
             parent=parent,
-            properties=_properties(expr, screenshot_path.name),
+            properties=_properties(expr, screenshot_path.name, source),
             children=[_image_block(descriptor)],
         )
         urls.append(page.get("url", page.get("id", "")))

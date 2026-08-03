@@ -42,8 +42,9 @@ def _wait_until_stable(path: Path, tries: int = 10, interval: float = 0.3) -> bo
 
 
 class _Handler(FileSystemEventHandler):
-    def __init__(self, processed: set[str]) -> None:
+    def __init__(self, processed: set[str], source: str = "") -> None:
         self._processed = processed
+        self._source = source
 
     def _handle(self, raw_path: str) -> None:
         path = Path(raw_path)
@@ -69,7 +70,7 @@ class _Handler(FileSystemEventHandler):
             return
 
         try:
-            urls = notion_writer.write_entry(analysis, path)
+            urls = notion_writer.write_entry(analysis, path, source=self._source)
         except Exception as exc:  # noqa: BLE001
             print(f"  ! Notion write failed: {exc}")
             return
@@ -88,12 +89,32 @@ class _Handler(FileSystemEventHandler):
             self._handle(event.dest_path)
 
 
+def _ask_source() -> str:
+    """Ask once, at startup, which show this watch session is for.
+
+    The answer is stamped onto every card written this session (Notion's Source
+    field). Empty input keeps the old behaviour: Source left blank, filled in
+    later by hand. A non-interactive stdin (e.g. piped) also yields empty.
+    """
+    try:
+        answer = input("今天看什么剧？（例:Modern Family S3E5，直接回车跳过）\n> ")
+    except EOFError:
+        return ""
+    return answer.strip()
+
+
 def run() -> None:
     watch_dir = config.WATCH_DIR
     watch_dir.mkdir(parents=True, exist_ok=True)
     processed = _load_state()
 
-    handler = _Handler(processed)
+    source = _ask_source()
+    if source:
+        print(f"[BingeLingo] 本轮 Source = {source}")
+    else:
+        print("[BingeLingo] 未设置 Source，本轮留空。")
+
+    handler = _Handler(processed, source=source)
     observer = Observer()
     observer.schedule(handler, str(watch_dir), recursive=False)
     observer.start()
