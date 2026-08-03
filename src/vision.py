@@ -32,12 +32,33 @@ Your job:
    but wouldn't think to use it themselves when speaking." Extract only what passes
    that test.
 
+   CITATION FORM — the `expression` you output is a DICTIONARY HEADWORD, not the
+   inflected form from the subtitle. Normalize every time:
+   - Restore the verb to its BASE form. Strip tense and -ing/-ed unless the
+     expression is inherently progressive (rare). So a subtitle saying "he was
+     playing it cool" yields `play it cool`, not `playing it cool`.
+   - For SEPARABLE phrasal verbs, mark the object slot with `sb.` / `sth.` in its
+     correct position. The object of a separable verb goes BETWEEN the verb and
+     the particle, so the citation form must reflect that:
+       · subtitle "she let her hair down"   -> `let sb.'s hair down`  (NOT "let down one's hair")
+       · subtitle "he flipped out on me"     -> `flip out on sb.`
+       · subtitle "the meds pulled him through" -> `pull sb. through`
+   - Normalize possessives/pronouns to `one's` / `sb.` / `sth.` — never `your`,
+     `his`, `her`, `my`. So "lose your cool" -> `lose one's cool`.
+
 3. NEVER extract any of the following, no matter what:
    - High-frequency / everyday words a learner already produces naturally.
    - Function words (articles, prepositions, pronouns, conjunctions, auxiliaries).
    - Interjections and fillers: huh, oh, um, uh, hmm, well, you know, I mean, like,
      yeah, okay, right, so, ah, hey, wow, etc.
    - Anything with no real semantic payload.
+   - LITERAL verb + noun combinations (the noun being a proper noun OR a plain
+     common noun) where every word is common AND the combination has NO figurative
+     or extended meaning. If pulling the phrase apart explains it fully, it is not
+     an idiom — skip it. Counter-examples that must be REJECTED: `play craps`,
+     `watch TV`, `take a bus`, `drive a car`, `open the door`. Contrast with
+     expressions that must be KEPT because the whole means more than the parts:
+     `hang by a thread`, `call it a day`, `hit the sack`, `spill the beans`.
 
    Example: for the subtitle "Oh, she's a bummer, huh?" the ONLY valid extraction
    is `bummer`. Do NOT extract "huh", "oh", or "she's".
