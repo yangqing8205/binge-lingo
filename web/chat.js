@@ -7,6 +7,7 @@ const chat = {
   currentShow: "",     // show inferred from Notion Source (from /api/scene-context)
   matchedKey: null,    // key of the character matching currentShow, if any
   generating: false,   // a background for-show generation is in flight
+  sceneError: "",      // last for-show generation error, shown as a small note
 };
 
 const chatEl = {
@@ -49,9 +50,10 @@ async function loadCharacters() {
   }
 }
 
-// After the grid loads, figure out what the learner is watching (from their
-// Notion Source) and make sure a matching character is ready — surfaced first,
-// or generated in the background without blocking the rest of the list.
+// After the grid loads, figure out what shows the learner has been watching
+// (from their Notion Source) and make sure each has a character ready. The
+// newest show's character is surfaced first with a badge; any missing ones are
+// generated in the background without blocking the rest of the list.
 async function prepareSceneCharacter() {
   let ctx;
   try {
@@ -60,35 +62,47 @@ async function prepareSceneCharacter() {
   } catch (_) {
     return; // best-effort; the built-ins are always available as fallback
   }
-  if (!ctx || !ctx.ok || !ctx.show) return;
-  chat.currentShow = ctx.show;
+  if (!ctx || !ctx.ok) return;
+  const shows = ctx.shows && ctx.shows.length ? ctx.shows : (ctx.show ? [ctx.show] : []);
+  if (!shows.length) return;
 
-  if (ctx.matched) {
-    chat.matchedKey = ctx.matched.key;
-    renderCharGrid(); // reorders the matched character to the front + badge
-    return;
-  }
-  // No character for this show yet — generate one in the background.
-  chat.generating = true;
-  renderCharGrid(); // shows the loading placeholder at the front
-  try {
-    const res = await fetch("/api/characters/for-show", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ show: ctx.show }),
-    });
-    const data = await res.json();
-    chat.generating = false;
-    if (data.ok && data.character) {
-      chat.matchedKey = data.character.key;
-      await loadCharacters(); // pull in the new character…
-      renderCharGrid();       // …and reorder it to the front with the badge
-    } else {
-      renderCharGrid(); // drop the placeholder; built-ins remain usable
+  chat.currentShow = shows[0]; // newest show — the one we badge and surface
+  if (ctx.matched) chat.matchedKey = ctx.matched.key;
+  renderCharGrid();
+
+  // Ensure a character exists for every recent show. The primary (newest) one
+  // is generated first so it can be surfaced; the rest just get prepared for
+  // next time. for-show is idempotent, so an already-matched show is a no-op.
+  for (const show of shows) {
+    const isPrimary = show === chat.currentShow;
+    if (isPrimary && chat.matchedKey) continue; // already have the badged one
+
+    if (isPrimary) { chat.generating = true; renderCharGrid(); }
+    try {
+      const res = await fetch("/api/characters/for-show", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ show }),
+      });
+      const data = await res.json();
+      if (isPrimary) chat.generating = false;
+      if (data.ok && data.character) {
+        await loadCharacters(); // pull the new/reused character into the list
+        if (isPrimary) { chat.sceneError = ""; chat.matchedKey = data.character.key; }
+        renderCharGrid();
+      } else if (isPrimary) {
+        // Surface why the badged show failed; built-ins stay usable. Server logs
+        // the full reason. Non-primary failures stay quiet — they're prep only.
+        chat.sceneError = data.error || "生成失败";
+        renderCharGrid();
+      }
+    } catch (err) {
+      if (isPrimary) {
+        chat.generating = false;
+        chat.sceneError = err.message || "网络错误";
+        renderCharGrid();
+      }
     }
-  } catch (_) {
-    chat.generating = false;
-    renderCharGrid();
   }
 }
 
@@ -147,6 +161,16 @@ function renderCharGrid() {
       '<span class="char-cardname">正在准备角色…</span>' +
       '<span class="char-intro">根据你在看的剧自动生成，稍等片刻</span></span>';
     chatEl.charGrid.appendChild(ph);
+  }
+
+  // If auto-generation failed, say so quietly — built-ins are still usable.
+  if (chat.sceneError && !chat.generating) {
+    const note = document.createElement("div");
+    note.className = "scene-error";
+    note.textContent =
+      "《" + chat.currentShow + "》的角色自动生成失败：" + chat.sceneError +
+      "（可先用下面的角色，或点“+ 新建角色”重试）";
+    chatEl.charGrid.appendChild(note);
   }
 
   list.forEach((c) => chatEl.charGrid.appendChild(makeCharCard(c, false)));

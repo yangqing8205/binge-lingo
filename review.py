@@ -7,6 +7,7 @@ already-flattened card JSON from /api/cards.
 """
 from __future__ import annotations
 
+import logging
 import os
 import secrets
 
@@ -20,6 +21,11 @@ from flask import (
 )
 
 from src import characters, chat, config, matching, notion_reader, review_log
+
+# Logs go to stderr, which Render captures. gunicorn also runs at INFO, so these
+# land in the deploy log where you can read why a character generation failed.
+logging.basicConfig(level=logging.INFO)
+log = logging.getLogger("bingelingo")
 
 # Resolve paths from this file's location, never the process CWD: under gunicorn
 # on Render the working directory is not guaranteed to be the repo root, so any
@@ -247,18 +253,30 @@ def api_scene_context():
     uses this to surface a show-matched character first (or trigger background
     generation). Never fails hard — an empty show just means "no match".
     """
-    show = ""
+    shows: list[str] = []
     try:
         cards = notion_reader.fetch_cards()
-        for c in cards:  # cards are newest-first; take the first with a Source
+        # Cards are newest-first. Collect the distinct shows the learner has been
+        # watching, most-recent first — not just the single newest card, since
+        # sessions from different shows are usually interleaved.
+        seen = set()
+        for c in cards:
             s = characters.show_from_source(c.get("source", ""))
-            if s:
-                show = s
-                break
+            if s and s.lower() not in seen:
+                seen.add(s.lower())
+                shows.append(s)
     except Exception:  # noqa: BLE001 — scene hint is best-effort, never blocking
-        show = ""
+        log.exception("scene-context: failed to read cards from Notion")
+
+    show = shows[0] if shows else ""
     matched = characters.find_by_show(show) if show else None
-    return jsonify({"ok": True, "show": show, "matched": matched})
+    log.info(
+        "scene-context: shows=%r primary=%r matched=%s",
+        shows, show, matched["key"] if matched else None,
+    )
+    # `show` + `matched` keep the old single-show contract; `shows` lets the
+    # frontend prepare a character for every recent show, not only the newest.
+    return jsonify({"ok": True, "show": show, "matched": matched, "shows": shows})
 
 
 @app.post("/api/characters/for-show")
@@ -274,7 +292,10 @@ def api_characters_for_show():
         return jsonify({"ok": False, "error": "没有识别到剧名。"}), 400
     existing = characters.find_by_show(show)
     if existing:
+        log.info("for-show: reusing existing character %r for show=%r",
+                 existing["key"], show)
         return jsonify({"ok": True, "character": existing, "reused": True})
+    log.info("for-show: generating a character for show=%r", show)
     try:
         persona = chat.generate_persona_for_show(show)
         color = characters.pick_color(persona["display_name"] or show)
@@ -286,9 +307,15 @@ def api_characters_for_show():
             persona=persona["persona"],
         )
     except ValueError as exc:
+        log.warning("for-show: bad input for show=%r: %s", show, exc)
         return jsonify({"ok": False, "error": str(exc)}), 400
     except Exception as exc:  # noqa: BLE001 — surface to the UI as JSON
+        # Full traceback to the deploy log so silent generation failures (gateway
+        # errors, tool-call parsing, DB writes) are diagnosable.
+        log.exception("for-show: generation failed for show=%r", show)
         return jsonify({"ok": False, "error": str(exc)}), 502
+    log.info("for-show: created %r (%s) for show=%r",
+             created["key"], created["name"], show)
     return jsonify({"ok": True, "character": created, "reused": False})
 
 

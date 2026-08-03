@@ -701,6 +701,17 @@ body {
   padding: 2px 7px;
   margin-bottom: 4px;
 }
+/* auto-generation failure note (spans both grid columns) */
+.scene-error {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  color: var(--accent);
+  background: rgba(143,58,47,.06);
+  border: 1px solid rgba(143,58,47,.2);
+  border-radius: 6px;
+  padding: 8px 11px;
+  line-height: 1.5;
+}
 /* background-generation placeholder */
 .char-card--loading { border-style: dashed; cursor: default; opacity: .9; }
 .char-avatar--loading { background: var(--line-strong); color: #fff; animation: wh-pulse 1.1s ease-in-out infinite; }
@@ -734,6 +745,9 @@ body {
   place-items: center;
   background: rgba(43,36,32,.45);
 }
+/* `display: grid` above would otherwise override the `hidden` attribute, so the
+   modal must explicitly collapse when hidden. */
+.char-modal[hidden] { display: none; }
 .char-modal__box {
   width: min(420px, 90vw);
   background: var(--cream);
