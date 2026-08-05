@@ -103,6 +103,95 @@ _PERSONA_TOOL = {
 }
 
 
+# --- cast generation ---------------------------------------------------------
+# Generating one auto-character per show left every non-built-in show with a
+# cast of exactly one. This generates a whole main-cast group in a single model
+# call (never one call per character) so a fresh show gets several characters
+# to pick from, same as Modern Family's ten built-ins.
+_CAST_SYSTEM_PROMPT = """\
+You design a roleplay CAST for an English-conversation practice app, covering
+several of a show's main characters at once. Given a show name, and optionally
+(a) parody names already used FOR THIS SHOW and (b) parody names already used
+by OTHER shows, pick this show's main characters and give each one a persona.
+
+RULES:
+- Pick roughly 6 main characters for this show in total — never fewer than 3,
+  never more than 8, counting any that already exist for it.
+- If "already used for this show" names are given, figure out which real
+  character each one represents and do NOT pick that same character again.
+  Your new picks plus however many already exist should land around 6 total
+  (up to 8) — so if several already exist, pick fewer new ones. If this show
+  already has 6 or more, return an empty characters array.
+- Every display_name in your output must be a distinct parody rename — no two
+  of your own characters can share one, and none can match a name already used
+  for this show OR by another show (that list is for collision-avoidance only —
+  it does not count toward this show's target).
+- For each character, report original_name: the real character's name from the
+  show (used only for our records, never shown to the learner).
+- For EACH character, apply this rename rule:
+  * Keep the original name's phonetic RHYTHM and syllable count.
+  * Change only ONE or TWO letters from the original.
+  * The result MUST NOT be a real existing first name or surname.
+  * It should read as a playful near-homophone, like the app's existing cast:
+    Phil Dunphy -> Fil Funphy, Claire -> Clair-ification.
+  BAD (never do this): "Jesse P." (truncation, not a rename); "Jesse
+  Pinkerton" (swaps in a different real surname).
+  GOOD shape: Jesse Pinkman -> Jesse Pinkling / Jessie Pinkman.
+- For each character also write: intro (one short first-person catchphrase in
+  their voice, like a chat-app status line — e.g. "I've got a Fil-osophy for
+  every situation. You're welcome.") and persona (a compact second-person
+  description the app speaks AS — cadence and tone, a signature catchphrase or
+  sentence pattern, core personality, how they tend to open a conversation, and
+  ONE wordplay/pun bit rooted in the real show. Write it as direct instruction:
+  "You are <name>, ...". No teaching or practice instructions.)
+
+Return your result by calling `report_cast` with a `characters` array.
+"""
+
+_CAST_TOOL = {
+    "name": "report_cast",
+    "description": "Report the generated roleplay cast for the show.",
+    "input_schema": {
+        "type": "object",
+        "properties": {
+            "characters": {
+                "type": "array",
+                "description": "Roughly 6 (max 8) distinct main characters.",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "original_name": {
+                            "type": "string",
+                            "description": "The real character's name from the "
+                            "show — for our records only, never shown to the "
+                            "learner.",
+                        },
+                        "display_name": {
+                            "type": "string",
+                            "description": "Parody rename: keep the phonetic "
+                            "rhythm, change 1-2 letters, must NOT be a real name.",
+                        },
+                        "intro": {
+                            "type": "string",
+                            "description": "One short first-person catchphrase "
+                            "in-voice.",
+                        },
+                        "persona": {
+                            "type": "string",
+                            "description": "Second-person persona the app "
+                            "speaks as; cadence, catchphrase, personality, how "
+                            "they open, one show-rooted pun. No teaching rules.",
+                        },
+                    },
+                    "required": ["original_name", "display_name", "intro", "persona"],
+                },
+            },
+        },
+        "required": ["characters"],
+    },
+}
+
+
 # Stella-r replies in tiny fragments, so she needs more turns to give the same
 # number of expressions a chance to appear.
 _DEFAULT_TARGET_TURNS = 6
@@ -111,10 +200,10 @@ _STELLA_TARGET_TURNS = 10
 _sessions: dict[str, dict] = {}
 
 
-def list_characters() -> list[dict]:
+def list_characters(show: str | None = None) -> list[dict]:
     """Public metadata for the pick screen. Delegates to the characters DB so
     built-ins and user-made characters come from one source of truth."""
-    return characters.list_characters()
+    return characters.list_characters(show=show)
 
 
 def _norm_name(s: str) -> str:
@@ -230,6 +319,89 @@ def generate_persona(show: str, character: str, note: str = "") -> dict:
         retry = _one_call(retry_note)
         if retry["display_name"]:
             result = retry
+    return result
+
+
+def generate_cast_for_show(
+    show: str,
+    same_show_names: list[str] | None = None,
+    other_show_names: list[str] | None = None,
+) -> list[dict]:
+    """Generate a whole main-cast top-up for a show in ONE model call.
+
+    Used the first time a show is seen (or when it only has a handful of
+    characters so far) so it gets a real cast to choose from instead of a
+    single auto-picked character.
+
+    `same_show_names` are display_names already used FOR THIS SHOW — the model
+    must not re-pick the real character behind any of them, and they count
+    toward the ~6 target (so a show with 1 existing character gets ~5 more,
+    not 6 more). `other_show_names` are display_names used by OTHER shows —
+    pure collision-avoidance, must not be reused, but don't count toward this
+    show's target.
+
+    Returns a list of {"display_name", "intro", "persona"} — degrades
+    gracefully: any item that's malformed, a name collision (within the batch
+    or against either name list), or a rename that's too close to the real
+    character (per the same rule generate_persona enforces) is dropped rather
+    than sinking the whole batch. Never retries — this is a single call.
+    """
+    show = (show or "").strip()
+    if not show:
+        raise ValueError("Show is required.")
+    same_names = [n.strip() for n in (same_show_names or []) if n.strip()]
+    other_names = [n.strip() for n in (other_show_names or []) if n.strip()]
+
+    prompt = f"Show: {show}"
+    if same_names:
+        prompt += (
+            "\n\nAlready used FOR THIS SHOW (do not re-pick the real character "
+            "behind any of these; they count toward the ~6 target):\n"
+            + ", ".join(same_names)
+        )
+    if other_names:
+        prompt += (
+            "\n\nAlready used by OTHER shows (avoid these exact names, but they "
+            "do not count toward this show's target):\n"
+            + ", ".join(other_names)
+        )
+
+    resp = _client.messages.create(
+        model=config.API_MODEL,
+        max_tokens=3000,
+        temperature=0.9,
+        system=_CAST_SYSTEM_PROMPT,
+        tools=[_CAST_TOOL],
+        tool_choice={"type": "tool", "name": "report_cast"},
+        messages=[{"role": "user", "content": prompt}],
+    )
+
+    raw_items: list = []
+    for block in resp.content:
+        if getattr(block, "type", "") == "tool_use" and block.name == "report_cast":
+            raw_items = block.input.get("characters") or []
+            break
+
+    used_norm = {_norm_name(n) for n in same_names + other_names}
+    result: list[dict] = []
+    for item in raw_items:
+        if not isinstance(item, dict):
+            continue  # malformed entry — skip it, keep the rest of the batch
+        display_name = str(item.get("display_name", "")).strip()
+        original_name = str(item.get("original_name", "")).strip()
+        intro = str(item.get("intro", "")).strip()
+        persona = str(item.get("persona", "")).strip()
+        if not display_name or not intro or not persona:
+            continue
+        norm = _norm_name(display_name)
+        if not norm or norm in used_norm:
+            continue  # duplicate within this batch or against an existing name
+        if original_name and not _looks_renamed(original_name, display_name):
+            continue  # rename too close to (or a truncation of) the real name
+        used_norm.add(norm)
+        result.append({"display_name": display_name, "intro": intro, "persona": persona})
+        if len(result) >= 8:
+            break  # hard cap regardless of what the model returned
     return result
 
 

@@ -8,7 +8,7 @@ from pathlib import Path
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
-from . import config, notion_writer, vision
+from . import config, notion_writer, settings, vision
 
 
 def _load_state() -> set[str]:
@@ -42,9 +42,10 @@ def _wait_until_stable(path: Path, tries: int = 10, interval: float = 0.3) -> bo
 
 
 class _Handler(FileSystemEventHandler):
-    def __init__(self, processed: set[str], source: str = "") -> None:
+    def __init__(self, processed: set[str], show: str = "", episode: str = "") -> None:
         self._processed = processed
-        self._source = source
+        self._show = show
+        self._episode = episode
 
     def _handle(self, raw_path: str) -> None:
         path = Path(raw_path)
@@ -70,7 +71,9 @@ class _Handler(FileSystemEventHandler):
             return
 
         try:
-            urls = notion_writer.write_entry(analysis, path, source=self._source)
+            urls = notion_writer.write_entry(
+                analysis, path, show=self._show, episode=self._episode
+            )
         except Exception as exc:  # noqa: BLE001
             print(f"  ! Notion write failed: {exc}")
             return
@@ -89,34 +92,52 @@ class _Handler(FileSystemEventHandler):
             self._handle(event.dest_path)
 
 
-def _ask_source() -> str:
-    """Ask once, at startup, which show this watch session is for.
-
-    The answer is stamped onto every card written this session (Notion's Source
-    field). Empty input keeps the old behaviour: Source left blank, filled in
-    later by hand. A non-interactive stdin (e.g. piped) also yields empty.
-    """
+def _ask(prompt: str) -> str:
     try:
-        answer = input("今天看什么剧？（例:Modern Family S3E5，直接回车跳过）\n> ")
+        answer = input(prompt)
     except EOFError:
         return ""
     return answer.strip()
 
 
+def _ask_show_and_episode() -> tuple[str, str]:
+    """Ask once, at startup, which show (and optionally episode) this session
+    is for. Both are stamped onto every card written this session — separately
+    now (Notion's Show/Episode fields), not squeezed into one string. Either
+    can be left blank; a non-interactive stdin (e.g. piped) yields both blank.
+    """
+    show = _ask("今天看什么剧？（直接回车跳过）\n> ")
+    if not show:
+        return "", ""
+    episode = _ask("第几集？（例:S3E5，直接回车跳过）\n> ")
+    return show, episode
+
+
 def run() -> None:
-    watch_dir = config.WATCH_DIR
-    watch_dir.mkdir(parents=True, exist_ok=True)
     processed = _load_state()
 
-    source = _ask_source()
-    if source:
-        print(f"[BingeLingo] 本轮 Source = {source}")
+    show, episode = _ask_show_and_episode()
+    if show:
+        print(f"[BingeLingo] 本轮 Show = {show}" + (f"，Episode = {episode}" if episode else ""))
+        # Only touch current_show when one was actually given — skipping this
+        # prompt shouldn't silently clear a show picked earlier via the web
+        # switcher.
+        settings.set_current_show(show)
     else:
-        print("[BingeLingo] 未设置 Source，本轮留空。")
+        print("[BingeLingo] 未设置 Show，本轮留空（当前剧集设置保持不变）。")
 
-    handler = _Handler(processed, source=source)
+    # Screenshots are filed under screenshots/<show>/ so different shows never
+    # mix in the same folder. No show → stays at the watch root, same as before.
+    config.WATCH_DIR.mkdir(parents=True, exist_ok=True)
+    show_dirname = config.safe_show_dirname(show)
+    watch_dir = (config.WATCH_DIR / show_dirname) if show_dirname else config.WATCH_DIR
+    watch_dir.mkdir(parents=True, exist_ok=True)
+
+    handler = _Handler(processed, show=show, episode=episode)
     observer = Observer()
-    observer.schedule(handler, str(watch_dir), recursive=False)
+    # Recursive so screenshots dropped into any per-show subfolder are caught,
+    # not just ones landing directly in the watched root.
+    observer.schedule(handler, str(config.WATCH_DIR), recursive=True)
     observer.start()
     print(f"[BingeLingo] Watching {watch_dir} for new screenshots. Ctrl-C to stop.")
     try:

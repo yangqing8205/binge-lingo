@@ -213,13 +213,22 @@ def _row_to_public(row: sqlite3.Row) -> dict:
     }
 
 
-def list_characters() -> list[dict]:
-    """All characters: built-ins first, then custom ones by creation order."""
+def list_characters(show: str | None = None) -> list[dict]:
+    """Characters: built-ins first, then custom ones by creation order.
+
+    `show`, when given, filters to characters whose source_show matches it
+    (case/space-insensitive) — used to show only the current show's cast in
+    Scene Talk instead of every character ever made.
+    """
     with _connect() as conn:
         rows = conn.execute(
             "SELECT * FROM characters ORDER BY is_builtin DESC, id ASC"
         ).fetchall()
-    return [_row_to_public(r) for r in rows]
+    chars = [_row_to_public(r) for r in rows]
+    if show:
+        target = _norm_show(show)
+        chars = [c for c in chars if _norm_show(c["source_show"]) == target]
+    return chars
 
 
 def get(key: str) -> dict | None:

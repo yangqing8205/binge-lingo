@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -49,3 +50,20 @@ STATE_FILE = PROJECT_ROOT / ".processed_screenshots.json"
 
 # Image extensions we treat as screenshots.
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".gif"}
+
+# Characters illegal (or awkward) in a folder name on macOS/Windows. CJK and
+# other non-ASCII text is left untouched — only filesystem-hostile characters
+# are stripped.
+_UNSAFE_DIRNAME_CHARS = re.compile(r'[\\/:*?"<>|]')
+
+
+def safe_show_dirname(show: str) -> str:
+    """Turn a show name into a filesystem-safe folder name.
+
+    Strips characters that break paths on common filesystems, collapses
+    whitespace, and trims leading/trailing dots (Windows rejects those).
+    Returns "" for empty input — callers should fall back to WATCH_DIR itself.
+    """
+    s = _UNSAFE_DIRNAME_CHARS.sub("", show or "").strip()
+    s = re.sub(r"\s+", " ", s).strip(" .")
+    return s

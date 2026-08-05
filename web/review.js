@@ -12,6 +12,7 @@ const state = {
   outcome: null, // "cold" | "hint" | "revealed"
   shownAt: 0, // ms timestamp of when the current card's prompt appeared
   whToken: 0, // guards async word-history renders against paging races
+  show: "", // current_show, read once at load; "" = all shows
 };
 
 const el = {
@@ -92,9 +93,11 @@ function showNotice(msg, isError) {
 
 function episodeText() {
   const n = state.cards.length;
-  const src = (state.cards[state.i] && state.cards[state.i].source || "").trim();
-  if (src) return src + " · " + n + " expressions due today";
-  return "REVIEW SESSION · " + n + " expressions";
+  // Always read the single current_show source of truth (state.show, set once
+  // in load() from /api/current-show) — never a per-card legacy Source field,
+  // which could disagree with the switcher and desync the header from it.
+  const label = state.show || "ALL SHOWS";
+  return label.toUpperCase() + " · " + n + " expressions due today";
 }
 
 function clozeHTML(text) {
@@ -346,7 +349,8 @@ function wire() {
 async function refreshTodayCount() {
   if (!el.today) return;
   try {
-    const res = await fetch("/api/today-count");
+    const qs = state.show ? "?show=" + encodeURIComponent(state.show) : "";
+    const res = await fetch("/api/today-count" + qs);
     const data = await res.json();
     if (data && data.ok) el.today.textContent = "TODAY " + data.count;
   } catch (_) {
@@ -356,9 +360,17 @@ async function refreshTodayCount() {
 
 async function load() {
   showNotice("正在从 Notion 读取…", false);
+  try {
+    const curRes = await fetch("/api/current-show");
+    const curData = await curRes.json();
+    if (curData && curData.ok) state.show = curData.show || "";
+  } catch (_) {
+    state.show = "";
+  }
   refreshTodayCount();
   try {
-    const res = await fetch("/api/cards");
+    const qs = state.show ? "?show=" + encodeURIComponent(state.show) : "";
+    const res = await fetch("/api/cards" + qs);
     const data = await res.json();
     if (!data.ok) {
       showNotice("读取 Notion 失败：" + (data.error || "未知错误"), true);
@@ -381,3 +393,5 @@ async function load() {
 
 wire();
 load();
+// Switcher stays put and updates its own label; only the content area reloads.
+document.addEventListener("bl:show-changed", load);

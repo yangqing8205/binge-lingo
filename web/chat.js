@@ -4,8 +4,7 @@
 const chat = {
   characters: [],
   session: null, // { id, character, color, name, targets }
-  currentShow: "",     // show inferred from Notion Source (from /api/scene-context)
-  matchedKey: null,    // key of the character matching currentShow, if any
+  currentShow: "",     // read directly from /api/current-show — never inferred
   generating: false,   // a background for-show generation is in flight
   sceneError: "",      // last for-show generation error, shown as a small note
 };
@@ -38,9 +37,12 @@ const chatEl = {
   newCreate: $("new-create"),
 };
 
+// Loads characters strictly filtered to chat.currentShow when it's set (built-ins
+// included only if they belong to that show); unfiltered ("全部剧集") otherwise.
 async function loadCharacters() {
   try {
-    const res = await fetch("/api/characters");
+    const qs = chat.currentShow ? "?show=" + encodeURIComponent(chat.currentShow) : "";
+    const res = await fetch("/api/characters" + qs);
     const data = await res.json();
     if (!data.ok) return;
     chat.characters = data.characters || [];
@@ -50,73 +52,60 @@ async function loadCharacters() {
   }
 }
 
-// After the grid loads, figure out what shows the learner has been watching
-// (from their Notion Source) and make sure each has a character ready. The
-// newest show's character is surfaced first with a badge; any missing ones are
-// generated in the background without blocking the rest of the list.
+// Read current_show directly (never inferred from Notion Source — that guessing
+// logic was the root cause of past mis-tagging bugs). The for-show endpoint is
+// idempotent and top-up aware (see review.py), so it's safe to call every time
+// — it's a no-op once the show already has a full cast.
 async function prepareSceneCharacter() {
-  let ctx;
   try {
-    const res = await fetch("/api/scene-context");
-    ctx = await res.json();
+    const res = await fetch("/api/current-show");
+    const data = await res.json();
+    chat.currentShow = (data && data.ok && data.show) || "";
   } catch (_) {
-    return; // best-effort; the built-ins are always available as fallback
+    chat.currentShow = "";
   }
-  if (!ctx || !ctx.ok) return;
-  const shows = ctx.shows && ctx.shows.length ? ctx.shows : (ctx.show ? [ctx.show] : []);
-  if (!shows.length) return;
+  if (!chat.currentShow) {
+    await loadCharacters(); // "全部剧集" — unfiltered grid, no auto-generation
+    return;
+  }
 
-  chat.currentShow = shows[0]; // newest show — the one we badge and surface
-  if (ctx.matched) chat.matchedKey = ctx.matched.key;
+  await loadCharacters(); // re-filter the grid to this show
+
+  chat.generating = true;
   renderCharGrid();
-
-  // Ensure a character exists for every recent show. The primary (newest) one
-  // is generated first so it can be surfaced; the rest just get prepared for
-  // next time. for-show is idempotent, so an already-matched show is a no-op.
-  for (const show of shows) {
-    const isPrimary = show === chat.currentShow;
-    if (isPrimary && chat.matchedKey) continue; // already have the badged one
-
-    if (isPrimary) { chat.generating = true; renderCharGrid(); }
-    try {
-      const res = await fetch("/api/characters/for-show", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ show }),
-      });
-      const data = await res.json();
-      if (isPrimary) chat.generating = false;
-      if (data.ok && data.character) {
-        await loadCharacters(); // pull the new/reused character into the list
-        if (isPrimary) { chat.sceneError = ""; chat.matchedKey = data.character.key; }
-        renderCharGrid();
-      } else if (isPrimary) {
-        // Surface why the badged show failed; built-ins stay usable. Server logs
-        // the full reason. Non-primary failures stay quiet — they're prep only.
-        chat.sceneError = data.error || "生成失败";
+  try {
+    const res = await fetch("/api/characters/for-show", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ show: chat.currentShow }),
+    });
+    const data = await res.json();
+    chat.generating = false;
+    if (data.ok) {
+      chat.sceneError = "";
+      if (data.created && data.created.length) {
+        await loadCharacters(); // pull the newly generated cast into the list
+      } else {
         renderCharGrid();
       }
-    } catch (err) {
-      if (isPrimary) {
-        chat.generating = false;
-        chat.sceneError = err.message || "网络错误";
-        renderCharGrid();
-      }
+    } else {
+      chat.sceneError = data.error || "生成失败";
+      renderCharGrid();
     }
+  } catch (err) {
+    chat.generating = false;
+    chat.sceneError = err.message || "网络错误";
+    renderCharGrid();
   }
 }
 
-function makeCharCard(c, matched) {
+function makeCharCard(c) {
   const card = document.createElement("button");
-  card.className = "char-card" + (c.hidden ? " hidden-char" : "") +
-    (matched ? " char-card--matched" : "");
-  const badge = matched
-    ? '<span class="char-badge">来自你在看的《' + esc(chat.currentShow) + "》</span>"
-    : "";
+  card.className = "char-card" + (c.hidden ? " hidden-char" : "");
   card.innerHTML =
     '<span class="char-avatar" style="background:' + esc(c.color) + '">' +
     esc(initials(c.name)) +
-    '</span><span class="char-text">' + badge +
+    '</span><span class="char-text">' +
     '<span class="char-cardname">' + esc(c.name) +
     '</span><span class="char-intro">' + esc(c.intro) +
     "</span></span>";
@@ -139,25 +128,14 @@ function makeCharCard(c, matched) {
 function renderCharGrid() {
   chatEl.charGrid.innerHTML = "";
 
-  // Matched character (for the show being watched) leads the grid, then the
-  // rest in their normal order.
-  const list = chat.characters.slice();
-  let matched = null;
-  if (chat.matchedKey) {
-    const i = list.findIndex((c) => c.key === chat.matchedKey);
-    if (i !== -1) matched = list.splice(i, 1)[0];
-  }
-  if (matched) chatEl.charGrid.appendChild(makeCharCard(matched, true));
-
-  // While a for-show character is being generated, show a loading placeholder
-  // at the front — the rest of the list stays usable underneath.
+  // While a for-show cast is being generated/topped-up, show a loading
+  // placeholder at the front — the rest of the list stays usable underneath.
   if (chat.generating) {
     const ph = document.createElement("div");
     ph.className = "char-card char-card--loading";
     ph.innerHTML =
       '<span class="char-avatar char-avatar--loading">…</span>' +
-      '<span class="char-text"><span class="char-badge">来自你在看的《' +
-      esc(chat.currentShow) + "》</span>" +
+      '<span class="char-text">' +
       '<span class="char-cardname">正在准备角色…</span>' +
       '<span class="char-intro">根据你在看的剧自动生成，稍等片刻</span></span>';
     chatEl.charGrid.appendChild(ph);
@@ -173,15 +151,15 @@ function renderCharGrid() {
     chatEl.charGrid.appendChild(note);
   }
 
-  list.forEach((c) => chatEl.charGrid.appendChild(makeCharCard(c, false)));
+  chat.characters.forEach((c) => chatEl.charGrid.appendChild(makeCharCard(c)));
 
-  // Trailing "+ 新建角色" card (secondary entry for adding other shows).
+  // Trailing "+ 新建角色" card (manually add a character to the current show).
   const add = document.createElement("button");
   add.className = "char-card char-card--add";
   add.innerHTML =
     '<span class="char-avatar char-avatar--add">+</span>' +
     '<span class="char-text"><span class="char-cardname">新建角色</span>' +
-    '<span class="char-intro">想练别的剧？手动加一个</span></span>';
+    '<span class="char-intro">想加入新人物？手动加一个</span></span>';
   add.addEventListener("click", openCharModal);
   chatEl.charGrid.appendChild(add);
 }
@@ -424,6 +402,11 @@ function wireChat() {
 }
 
 wireChat();
-// Load the grid first (built-ins show immediately), then prepare the
-// show-matched character — surfaced first, or generated in the background.
-loadCharacters().then(prepareSceneCharacter);
+// Read current_show, then load the (possibly filtered) grid, then make sure a
+// full cast exists for the current show — topping it up in the background if not.
+prepareSceneCharacter();
+// Switcher stays put and updates its own label; only the content area reloads.
+document.addEventListener("bl:show-changed", () => {
+  backToChars();
+  prepareSceneCharacter();
+});

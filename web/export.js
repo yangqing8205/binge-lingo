@@ -188,9 +188,18 @@ function build() {
 async function loadData() {
   el.notice.hidden = true;
   try {
+    let show = "";
+    try {
+      const curRes = await fetch("/api/current-show");
+      const curData = await curRes.json();
+      if (curData && curData.ok) show = curData.show || "";
+    } catch (_) {
+      show = "";
+    }
+    const qs = show ? "?show=" + encodeURIComponent(show) : "";
     const [cRes, kRes] = await Promise.all([
-      fetch("/api/characters"),
-      fetch("/api/cards"),
+      fetch("/api/characters" + qs),
+      fetch("/api/cards" + qs),
     ]);
     const cData = await cRes.json();
     const kData = await kRes.json();
@@ -212,6 +221,7 @@ async function loadData() {
 }
 
 function wire() {
+  document.addEventListener("bl:show-changed", loadData);
   el.exprAll.addEventListener("click", () => {
     ex.expressions.forEach((e) => ex.sel.expressions.add(e));
     renderExpressions(); build();

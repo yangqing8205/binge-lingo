@@ -111,12 +111,16 @@ def history(page_id: str) -> dict | None:
     }
 
 
-def today_count() -> int:
+def today_count(page_ids: set[str] | None = None) -> int:
     """Number of attempts recorded so far today, in the server's local day.
 
     Timestamps are stored in UTC, so we compute the local day's [start, end)
     and convert both bounds to UTC ISO strings — comparing against a bare local
     date would miscount rows near midnight. Count only, no scheduling.
+
+    `page_ids`, when given, restricts the count to attempts on those pages —
+    this is how the TODAY counter stays scoped to the current show, since the
+    log itself has no show column (only page_id/expression/result).
     """
     now_local = datetime.now().astimezone()
     start_local = now_local.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -124,9 +128,20 @@ def today_count() -> int:
     start_utc = start_local.astimezone(timezone.utc).isoformat()
     end_utc = end_local.astimezone(timezone.utc).isoformat()
     with _connect() as conn:
-        (n,) = conn.execute(
-            "SELECT COUNT(*) FROM review_log "
-            "WHERE created_at >= ? AND created_at < ?",
-            (start_utc, end_utc),
-        ).fetchone()
+        if page_ids is not None:
+            if not page_ids:
+                return 0
+            placeholders = ",".join("?" * len(page_ids))
+            (n,) = conn.execute(
+                f"SELECT COUNT(*) FROM review_log "
+                f"WHERE created_at >= ? AND created_at < ? "
+                f"AND page_id IN ({placeholders})",
+                (start_utc, end_utc, *page_ids),
+            ).fetchone()
+        else:
+            (n,) = conn.execute(
+                "SELECT COUNT(*) FROM review_log "
+                "WHERE created_at >= ? AND created_at < ?",
+                (start_utc, end_utc),
+            ).fetchone()
     return n

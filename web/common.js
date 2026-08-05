@@ -67,7 +67,106 @@ function markActiveNav() {
   });
 }
 
+// ---- show switcher --------------------------------------------------------
+// The one place every tab learns which show to filter by. Lives in the topbar
+// next to DAY N. Reading current_show from here (instead of each tab guessing
+// it from the newest card) is the whole point of this refactor.
+const ALL_SHOWS_LABEL = "全部剧集";
+
+// The switcher itself (the button element) is created ONCE and never torn
+// down or re-rendered on switch — only its text content changes, and it
+// changes immediately on click (optimistic), before the POST resolves. This
+// is what keeps it from flickering: a page-wide reload used to rebuild the
+// whole DOM (switcher included) on every switch. Each page instead listens
+// for "bl:show-changed" and refreshes its own content independently, with its
+// own loading state.
+async function initShowSwitcher() {
+  const root = $("show-switcher");
+  if (!root) return;
+
+  let current = "";
+  let shows = [];
+  try {
+    const [curRes, showsRes] = await Promise.all([
+      fetch("/api/current-show"),
+      fetch("/api/shows"),
+    ]);
+    const curData = await curRes.json();
+    const showsData = await showsRes.json();
+    if (curData && curData.ok) current = curData.show || "";
+    if (showsData && showsData.ok) shows = showsData.shows || [];
+  } catch (_) {
+    return; // best-effort; leave the switcher absent rather than broken
+  }
+
+  root.innerHTML = "";
+  root.classList.add("show-switcher");
+
+  const btn = document.createElement("button");
+  btn.className = "show-switcher__btn";
+  btn.textContent = current || ALL_SHOWS_LABEL;
+  root.appendChild(btn);
+
+  const menu = document.createElement("div");
+  menu.className = "show-switcher__menu";
+  menu.hidden = true;
+  root.appendChild(menu);
+
+  function renderMenu() {
+    menu.innerHTML = "";
+    const options = [""].concat(shows); // "" = 全部剧集
+    options.forEach((show) => {
+      const item = document.createElement("button");
+      item.className = "show-switcher__item" + (show === current ? " is-on" : "");
+      item.textContent = show || ALL_SHOWS_LABEL;
+      item.addEventListener("click", (e) => {
+        e.stopPropagation();
+        menu.hidden = true;
+        switchTo(show);
+      });
+      menu.appendChild(item);
+    });
+  }
+  renderMenu();
+
+  async function switchTo(show) {
+    if (show === current) return;
+    const prevShow = current;
+    const prevLabel = btn.textContent;
+    current = show;
+    btn.textContent = show || ALL_SHOWS_LABEL;
+    renderMenu();
+    try {
+      const res = await fetch("/api/current-show", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ show }),
+      });
+      const data = await res.json();
+      if (!data || !data.ok) throw new Error((data && data.error) || "切换失败");
+    } catch (err) {
+      // Never leave the button on an unconfirmed show — roll all the way back.
+      current = prevShow;
+      btn.textContent = prevLabel;
+      renderMenu();
+      alert("切换剧集失败：" + err.message);
+      return;
+    }
+    document.dispatchEvent(new CustomEvent("bl:show-changed", { detail: { show } }));
+  }
+
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    menu.hidden = !menu.hidden;
+  });
+
+  document.addEventListener("click", () => {
+    menu.hidden = true;
+  });
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   markActiveNav();
   updateStreak();
+  initShowSwitcher();
 });

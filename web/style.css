@@ -93,6 +93,59 @@ body {
   border-radius: 999px;
 }
 
+/* ---- show switcher (topbar) ---- */
+.show-switcher { position: relative; }
+.show-switcher__btn {
+  font-family: var(--font-tab);
+  font-weight: 600;
+  font-size: 11px;
+  letter-spacing: .6px;
+  color: var(--cream);
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.22);
+  padding: 4px 11px;
+  border-radius: 999px;
+  cursor: pointer;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.show-switcher__btn:hover { background: rgba(255,255,255,.12); }
+.show-switcher__menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 160px;
+  max-width: 260px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--dark);
+  border: 1px solid rgba(255,255,255,.18);
+  border-radius: 8px;
+  box-shadow: 0 10px 26px rgba(0,0,0,.32);
+  padding: 6px;
+  z-index: 1100;
+}
+.show-switcher__item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  font-family: var(--font-tab);
+  font-size: 12px;
+  color: var(--cream);
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  padding: 7px 10px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.show-switcher__item:hover { background: rgba(255,255,255,.1); }
+.show-switcher__item.is-on { color: var(--accent); font-weight: 600; }
+
 /* ============ desk / folder layout ============ */
 .desk {
   max-width: 1120px;
@@ -673,7 +726,12 @@ body {
   font-weight: 600;
   font-size: 18px;
 }
-.char-text { min-width: 0; }
+.char-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
 .char-cardname {
   font-family: var(--font-serif);
   font-weight: 600;
@@ -684,23 +742,11 @@ body {
   font-size: 12px;
   color: var(--ink-soft);
   line-height: 1.45;
-  margin-top: 3px;
 }
-.char-card.hidden-char { border-style: dashed; opacity: .85; }
+/* built-in "hidden"/easter-egg characters: same solid card, just slightly
+   muted — must NOT share the dashed placeholder look of --add/--loading. */
+.char-card.hidden-char { opacity: .85; }
 .char-card { position: relative; }
-/* show-matched character: highlighted and led by a badge */
-.char-card--matched { border-color: var(--accent); box-shadow: 0 4px 14px rgba(143,58,47,.12); }
-.char-badge {
-  display: inline-block;
-  font-family: var(--font-tab);
-  font-size: 10px;
-  letter-spacing: .4px;
-  color: var(--accent);
-  background: rgba(143,58,47,.08);
-  border-radius: 4px;
-  padding: 2px 7px;
-  margin-bottom: 4px;
-}
 /* auto-generation failure note (spans both grid columns) */
 .scene-error {
   grid-column: 1 / -1;

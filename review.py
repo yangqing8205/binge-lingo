@@ -20,7 +20,7 @@ from flask import (
     session,
 )
 
-from src import characters, chat, config, matching, notion_reader, review_log
+from src import characters, chat, config, matching, notion_reader, review_log, settings
 
 # Logs go to stderr, which Render captures. gunicorn also runs at INFO, so these
 # land in the deploy log where you can read why a character generation failed.
@@ -142,11 +142,42 @@ def page_export():
 
 @app.get("/api/cards")
 def api_cards():
+    """Cards for the reviewer. `?show=` filters to that show; omitted = all.
+
+    The frontend is expected to pass the current_show value it read from
+    /api/current-show — this endpoint doesn't infer a show on its own.
+    """
+    show = request.args.get("show", "").strip()
     try:
-        cards = notion_reader.fetch_cards()
+        cards = notion_reader.fetch_cards(show=show or None)
     except Exception as exc:  # noqa: BLE001 — surface the reason to the UI
         return jsonify({"ok": False, "error": str(exc), "cards": []}), 502
     return jsonify({"ok": True, "count": len(cards), "cards": cards})
+
+
+# ---- 当前剧集 (the single source of truth every tab filters by) ----
+
+@app.get("/api/current-show")
+def api_current_show_get():
+    return jsonify({"ok": True, "show": settings.get_current_show()})
+
+
+@app.post("/api/current-show")
+def api_current_show_set():
+    data = request.get_json(silent=True) or {}
+    show = str(data.get("show", ""))
+    saved = settings.set_current_show(show)
+    return jsonify({"ok": True, "show": saved})
+
+
+@app.get("/api/shows")
+def api_shows():
+    """Distinct Show values seen in Notion, for the switcher's dropdown."""
+    try:
+        shows = notion_reader.list_shows()
+    except Exception as exc:  # noqa: BLE001 — surface the reason to the UI
+        return jsonify({"ok": False, "error": str(exc), "shows": []}), 502
+    return jsonify({"ok": True, "shows": shows})
 
 
 @app.post("/api/check")
@@ -201,7 +232,19 @@ def api_word_history():
 
 @app.get("/api/today-count")
 def api_today_count():
-    """Attempts recorded so far today — the top-bar TODAY counter. Count only."""
+    """Attempts recorded so far today — the top-bar TODAY counter. Count only.
+
+    `?show=` scopes the count to that show's cards (the review log itself has
+    no show column, so we resolve the current show's page ids from Notion
+    first). Omitted = count across all shows.
+    """
+    show = request.args.get("show", "").strip()
+    if show:
+        try:
+            page_ids = {c["id"] for c in notion_reader.fetch_cards(show=show)}
+        except Exception:  # noqa: BLE001 — counter is non-critical, fail soft
+            return jsonify({"ok": True, "count": 0})
+        return jsonify({"ok": True, "count": review_log.today_count(page_ids)})
     return jsonify({"ok": True, "count": review_log.today_count()})
 
 
@@ -209,7 +252,9 @@ def api_today_count():
 
 @app.get("/api/characters")
 def api_characters():
-    return jsonify({"ok": True, "characters": chat.list_characters()})
+    """`?show=` filters to that show's cast; omitted = every character."""
+    show = request.args.get("show", "").strip()
+    return jsonify({"ok": True, "characters": chat.list_characters(show=show or None)})
 
 
 @app.post("/api/characters")
@@ -244,68 +289,48 @@ def api_characters_create():
     return jsonify({"ok": True, "character": created})
 
 
-@app.get("/api/scene-context")
-def api_scene_context():
-    """What show is the learner currently watching, and is a character ready?
-
-    Reads the most recent non-empty Source across Notion cards to infer the
-    show, then reports whether a matching character already exists. The frontend
-    uses this to surface a show-matched character first (or trigger background
-    generation). Never fails hard — an empty show just means "no match".
-    """
-    shows: list[str] = []
-    try:
-        cards = notion_reader.fetch_cards()
-        # Cards are newest-first. Collect the distinct shows the learner has been
-        # watching, most-recent first — not just the single newest card, since
-        # sessions from different shows are usually interleaved.
-        seen = set()
-        for c in cards:
-            s = characters.show_from_source(c.get("source", ""))
-            if s and s.lower() not in seen:
-                seen.add(s.lower())
-                shows.append(s)
-    except Exception:  # noqa: BLE001 — scene hint is best-effort, never blocking
-        log.exception("scene-context: failed to read cards from Notion")
-
-    show = shows[0] if shows else ""
-    matched = characters.find_by_show(show) if show else None
-    log.info(
-        "scene-context: shows=%r primary=%r matched=%s",
-        shows, show, matched["key"] if matched else None,
-    )
-    # `show` + `matched` keep the old single-show contract; `shows` lets the
-    # frontend prepare a character for every recent show, not only the newest.
-    return jsonify({"ok": True, "show": show, "matched": matched, "shows": shows})
+_CAST_TARGET = 6  # roughly this many main characters per show, cap 8 (see chat.py)
 
 
 @app.post("/api/characters/for-show")
 def api_characters_for_show():
-    """Auto-generate one character for a show (LLM picks who), then persist it.
+    """Auto-generate (or top up) a show's main cast, then persist the new ones.
 
-    Idempotent per show: if a character already exists for it, return that one
-    instead of generating a duplicate.
+    Idempotent per show: if the show already has >= _CAST_TARGET characters,
+    this is a no-op that just returns them. Otherwise it generates enough new
+    ones, in one model call, to bring the show's cast up toward that target —
+    any characters the show already has (e.g. a single manually-added one)
+    count toward the target rather than being duplicated.
     """
     data = request.get_json(silent=True) or {}
     show = characters.show_from_source(str(data.get("show", "")))
     if not show:
         return jsonify({"ok": False, "error": "没有识别到剧名。"}), 400
-    existing = characters.find_by_show(show)
-    if existing:
-        log.info("for-show: reusing existing character %r for show=%r",
-                 existing["key"], show)
-        return jsonify({"ok": True, "character": existing, "reused": True})
-    log.info("for-show: generating a character for show=%r", show)
+
+    existing = characters.list_characters(show=show)
+    if len(existing) >= _CAST_TARGET:
+        log.info("for-show: show=%r already has %d characters, skipping",
+                 show, len(existing))
+        return jsonify({"ok": True, "characters": existing, "created": []})
+
+    log.info("for-show: generating cast top-up for show=%r (%d existing)",
+             show, len(existing))
     try:
-        persona = chat.generate_persona_for_show(show)
-        color = characters.pick_color(persona["display_name"] or show)
-        created = characters.add(
-            source_show=show,
-            display_name=persona["display_name"] or show,
-            intro=persona["intro"],
-            color=color,
-            persona=persona["persona"],
-        )
+        existing_keys = {c["key"] for c in existing}
+        same_names = [c["name"] for c in existing]
+        other_names = [c["name"] for c in characters.list_characters()
+                       if c["key"] not in existing_keys]
+        personas = chat.generate_cast_for_show(show, same_names, other_names)
+        created = []
+        for persona in personas:
+            color = characters.pick_color(persona["display_name"] or show)
+            created.append(characters.add(
+                source_show=show,
+                display_name=persona["display_name"] or show,
+                intro=persona["intro"],
+                color=color,
+                persona=persona["persona"],
+            ))
     except ValueError as exc:
         log.warning("for-show: bad input for show=%r: %s", show, exc)
         return jsonify({"ok": False, "error": str(exc)}), 400
@@ -314,9 +339,8 @@ def api_characters_for_show():
         # errors, tool-call parsing, DB writes) are diagnosable.
         log.exception("for-show: generation failed for show=%r", show)
         return jsonify({"ok": False, "error": str(exc)}), 502
-    log.info("for-show: created %r (%s) for show=%r",
-             created["key"], created["name"], show)
-    return jsonify({"ok": True, "character": created, "reused": False})
+    log.info("for-show: created %d character(s) for show=%r", len(created), show)
+    return jsonify({"ok": True, "characters": existing + created, "created": created})
 
 
 @app.delete("/api/characters/<key>")

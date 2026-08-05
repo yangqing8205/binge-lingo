@@ -162,6 +162,10 @@ def _page_to_card(page: dict) -> dict:
         "example": example,
         "difficulty": _plain_text(props.get("Difficulty")),
         "source": _plain_text(props.get("Source")),
+        # Show/Episode are the split fields; empty on cards written before they
+        # existed (Source still has the combined old-style string then).
+        "show": _plain_text(props.get("Show")),
+        "episode": _plain_text(props.get("Episode")),
         "image_url": _first_image_url(page.get("id", "")),
         # Raw stored sentence (empty on old cards) — used by the backfill script.
         "review_sentence": review_sentence,
@@ -179,12 +183,20 @@ def _page_to_card(page: dict) -> dict:
     }
 
 
-def fetch_cards() -> list[dict]:
+def _norm_show(s: str) -> str:
+    return " ".join((s or "").lower().split())
+
+
+def fetch_cards(show: str | None = None) -> list[dict]:
     """Query every page in the data source and return review-ready cards.
 
     Newest first. Cards missing an Expression are skipped as unreviewable.
+    `show`, when given, filters to cards whose Show field matches it
+    (case/space-insensitive) — this is the single filtering point every tab
+    goes through, instead of each guessing a show independently.
     """
     source_id = _resolve_data_source_id()
+    target = _norm_show(show) if show else ""
     cards: list[dict] = []
     cursor: str | None = None
     while True:
@@ -198,9 +210,28 @@ def fetch_cards() -> list[dict]:
         resp = _client.data_sources.query(**kwargs)
         for page in resp.get("results", []):
             card = _page_to_card(page)
-            if card["expression"]:
-                cards.append(card)
+            if not card["expression"]:
+                continue
+            if target and _norm_show(card["show"]) != target:
+                continue
+            cards.append(card)
         if not resp.get("has_more"):
             break
         cursor = resp.get("next_cursor")
     return cards
+
+
+def list_shows() -> list[str]:
+    """Distinct Show values across all cards, most-recently-created first.
+
+    Used by the show switcher's dropdown. Cards are already newest-first, so
+    the first occurrence of each show name preserves recency order.
+    """
+    seen: list[str] = []
+    seen_norm: set[str] = set()
+    for card in fetch_cards():
+        show = (card.get("show") or "").strip()
+        if show and _norm_show(show) not in seen_norm:
+            seen_norm.add(_norm_show(show))
+            seen.append(show)
+    return seen

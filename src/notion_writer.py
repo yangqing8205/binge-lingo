@@ -58,7 +58,7 @@ def _ensure_review_sentence_property() -> None:
     props = ds.get("properties", {})
     missing = {
         name: {"rich_text": {}}
-        for name in ("ReviewSentence", "Source", "CommonStructure")
+        for name in ("ReviewSentence", "Source", "CommonStructure", "Show", "Episode")
         if name not in props
     }
     if missing:
@@ -86,7 +86,9 @@ def _image_block(descriptor: dict) -> dict:
     }
 
 
-def _properties(expr: Expression, screenshot_name: str, source: str = "") -> dict:
+def _properties(
+    expr: Expression, screenshot_name: str, show: str = "", episode: str = ""
+) -> dict:
     props = {
         "Expression": _title(expr.expression),
         "Chinese": _rich_text(expr.meaning_zh),
@@ -100,20 +102,32 @@ def _properties(expr: Expression, screenshot_name: str, source: str = "") -> dic
     # expression is fixed, so leave the property unset rather than storing "".
     if expr.common_structure:
         props["CommonStructure"] = _rich_text(expr.common_structure)
-    # Only set Source when the watch session provided one; otherwise leave it
-    # unset so the field stays empty and can be filled in by hand as before.
+    # Show/Episode/Source are only set when the watch session provided them;
+    # otherwise the properties stay unset so they can be filled in by hand.
+    # Source is kept for backward compatibility with cards written before the
+    # Show/Episode split — it's the two joined, so old readers/filters that
+    # only know about Source keep working.
+    if show:
+        props["Show"] = _rich_text(show)
+    if episode:
+        props["Episode"] = _rich_text(episode)
+    source = " ".join(p for p in (show, episode) if p)
     if source:
         props["Source"] = _rich_text(source)
     return props
 
 
 def write_entry(
-    analysis: ScreenshotAnalysis, screenshot_path: Path, source: str = ""
+    analysis: ScreenshotAnalysis,
+    screenshot_path: Path,
+    show: str = "",
+    episode: str = "",
 ) -> list[str]:
     """Create one row per expression. Returns the created page URLs.
 
-    `source` (e.g. "Modern Family S3E5") is stamped onto every row when set;
-    empty means the Source field is left blank.
+    `show` (e.g. "Modern Family") and `episode` (e.g. "S3E5") are stamped onto
+    every row when set; either or both may be empty, in which case that
+    property (and the corresponding part of Source) is left blank.
     """
     _ensure_review_sentence_property()
     parent = {"type": "data_source_id", "data_source_id": _resolve_data_source_id()}
@@ -125,7 +139,7 @@ def write_entry(
         descriptor = uploader.upload_image(screenshot_path)
         page = _client.pages.create(
             parent=parent,
-            properties=_properties(expr, screenshot_path.name, source),
+            properties=_properties(expr, screenshot_path.name, show, episode),
             children=[_image_block(descriptor)],
         )
         urls.append(page.get("url", page.get("id", "")))
@@ -140,3 +154,15 @@ def update_review_sentence(page_id: str, sentence: str) -> None:
         page_id=page_id,
         properties={"ReviewSentence": _rich_text(sentence)},
     )
+
+
+def update_show_episode(page_id: str, show: str, episode: str) -> None:
+    """Set Show/Episode on an existing page (Source backfill path)."""
+    _ensure_review_sentence_property()
+    props = {}
+    if show:
+        props["Show"] = _rich_text(show)
+    if episode:
+        props["Episode"] = _rich_text(episode)
+    if props:
+        _client.pages.update(page_id=page_id, properties=props)
