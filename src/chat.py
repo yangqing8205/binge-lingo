@@ -19,7 +19,12 @@ from openai import OpenAI
 
 from . import characters, config, matching
 
-_client = OpenAI(base_url=config.API_BASE_URL, api_key=config.API_KEY)
+_client = OpenAI(
+    base_url=config.API_BASE_URL,
+    api_key=config.API_KEY,
+    timeout=90.0,
+    max_retries=0,
+)
 
 
 # --- teaching template ------------------------------------------------------

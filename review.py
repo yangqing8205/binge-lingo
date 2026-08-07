@@ -19,6 +19,7 @@ from flask import (
     send_from_directory,
     session,
 )
+from openai import APITimeoutError
 
 from src import characters, chat, config, matching, notion_reader, review_log, settings
 
@@ -341,6 +342,9 @@ def api_characters_for_show():
     except ValueError as exc:
         log.warning("for-show: bad input for show=%r: %s", show, exc)
         return jsonify({"ok": False, "error": str(exc)}), 400
+    except APITimeoutError:
+        log.warning("for-show: Ark timed out for show=%r", show)
+        return jsonify({"ok": False, "error": "角色生成超时，请稍后重试。"}), 504
     except Exception as exc:  # noqa: BLE001 — surface to the UI as JSON
         # Full traceback to the deploy log so silent generation failures (gateway
         # errors, tool-call parsing, DB writes) are diagnosable.

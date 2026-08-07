@@ -4,6 +4,9 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import httpx
+from openai import APITimeoutError
+
 
 os.environ.setdefault("API_BASE_URL", "https://example.invalid/api/v3")
 os.environ.setdefault("API_KEY", "test-key")
@@ -111,6 +114,23 @@ class CastRouteTests(unittest.TestCase):
             ["Wilter White", "Jesse Pinkling"],
             [],
             requested_count=3,
+        )
+
+    def test_timeout_returns_json_504(self):
+        timeout = APITimeoutError(request=httpx.Request("POST", "https://example.invalid"))
+
+        with (
+            patch.object(review.characters, "list_characters", side_effect=[[], []]),
+            patch.object(review.chat, "generate_cast_for_show", side_effect=timeout),
+        ):
+            response = self.client.post(
+                "/api/characters/for-show", json={"show": "Breaking Bad"}
+            )
+
+        self.assertEqual(504, response.status_code)
+        self.assertEqual(
+            {"ok": False, "error": "角色生成超时，请稍后重试。"},
+            response.get_json(),
         )
 
 
