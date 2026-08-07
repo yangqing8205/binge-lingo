@@ -86,7 +86,7 @@ class CastRouteTests(unittest.TestCase):
         with self.client.session_transaction() as session:
             session["authed"] = True
 
-    def test_route_requests_at_most_three_missing_characters(self):
+    def test_route_uses_lightweight_single_persona_generation(self):
         existing = [
             {
                 "key": "custom_1",
@@ -99,29 +99,39 @@ class CastRouteTests(unittest.TestCase):
                 "source_show": "Breaking Bad",
             },
         ]
+        persona = {
+            "display_name": "Sowl Goodman",
+            "intro": "Better call Sowl.",
+            "persona": "You are Sowl Goodman, a fast-talking fixer.",
+        }
+        created = {
+            "key": "custom_3",
+            "name": "Sowl Goodman",
+            "source_show": "Breaking Bad",
+        }
 
         with (
             patch.object(review.characters, "list_characters", side_effect=[existing, existing]),
-            patch.object(review.chat, "generate_cast_for_show", return_value=[]) as generate,
+            patch.object(review.chat, "generate_cast_for_show", return_value=[]),
+            patch.object(
+                review.chat, "generate_persona_for_show", return_value=persona
+            ) as generate,
+            patch.object(review.characters, "add", return_value=created),
         ):
             response = self.client.post(
                 "/api/characters/for-show", json={"show": "Breaking Bad"}
             )
 
         self.assertEqual(200, response.status_code)
-        generate.assert_called_once_with(
-            "Breaking Bad",
-            ["Wilter White", "Jesse Pinkling"],
-            [],
-            requested_count=3,
-        )
+        generate.assert_called_once_with("Breaking Bad")
+        self.assertEqual([created], response.get_json()["created"])
 
     def test_timeout_returns_json_504(self):
         timeout = APITimeoutError(request=httpx.Request("POST", "https://example.invalid"))
 
         with (
-            patch.object(review.characters, "list_characters", side_effect=[[], []]),
-            patch.object(review.chat, "generate_cast_for_show", side_effect=timeout),
+            patch.object(review.characters, "list_characters", return_value=[]),
+            patch.object(review.chat, "generate_persona_for_show", side_effect=timeout),
         ):
             response = self.client.post(
                 "/api/characters/for-show", json={"show": "Breaking Bad"}
