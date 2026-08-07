@@ -134,5 +134,17 @@ class CastRouteTests(unittest.TestCase):
         )
 
 
+class SecurityCleanupTests(unittest.TestCase):
+    def setUp(self):
+        review.app.config.update(TESTING=True, SECRET_KEY="test-secret")
+        self.client = review.app.test_client()
+        with self.client.session_transaction() as session:
+            session["authed"] = True
+
+    def test_ark_key_debug_endpoint_is_removed(self):
+        response = self.client.get("/api/debug/ark-key")
+        self.assertEqual(404, response.status_code)
+
+
 if __name__ == "__main__":
     unittest.main()
