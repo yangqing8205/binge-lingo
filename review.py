@@ -291,7 +291,6 @@ def api_characters_create():
 
 
 _CAST_TARGET = 6  # eventual cast size per show
-_CAST_BATCH_SIZE = 3  # keep each Ark call safely below Gunicorn's timeout
 
 
 @app.post("/api/characters/for-show")
@@ -315,30 +314,21 @@ def api_characters_for_show():
                  show, len(existing))
         return jsonify({"ok": True, "characters": existing, "created": []})
 
-    log.info("for-show: generating cast top-up for show=%r (%d existing)",
+    log.info("for-show: generating one character for show=%r (%d existing)",
              show, len(existing))
     try:
-        existing_keys = {c["key"] for c in existing}
-        same_names = [c["name"] for c in existing]
-        other_names = [c["name"] for c in characters.list_characters()
-                       if c["key"] not in existing_keys]
-        requested_count = min(_CAST_BATCH_SIZE, _CAST_TARGET - len(existing))
-        personas = chat.generate_cast_for_show(
-            show,
-            same_names,
-            other_names,
-            requested_count=requested_count,
-        )
-        created = []
-        for persona in personas:
-            color = characters.pick_color(persona["display_name"] or show)
-            created.append(characters.add(
-                source_show=show,
-                display_name=persona["display_name"] or show,
-                intro=persona["intro"],
-                color=color,
-                persona=persona["persona"],
-            ))
+        # The whole-cast prompt can exceed Gunicorn's 120-second timeout on
+        # Render. Generate one lightweight persona per visit instead; later
+        # visits continue topping the show up until _CAST_TARGET is reached.
+        persona = chat.generate_persona_for_show(show)
+        color = characters.pick_color(persona["display_name"] or show)
+        created = [characters.add(
+            source_show=show,
+            display_name=persona["display_name"] or show,
+            intro=persona["intro"],
+            color=color,
+            persona=persona["persona"],
+        )]
     except ValueError as exc:
         log.warning("for-show: bad input for show=%r: %s", show, exc)
         return jsonify({"ok": False, "error": str(exc)}), 400
