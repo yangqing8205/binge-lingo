@@ -6,19 +6,20 @@ their saved expressions (rather than just recognizing them). At the end the mode
 drops character and grades which target expressions actually came out.
 
 Sessions live in a plain in-memory dict — this is a single-user local tool, so no
-database. Everything model-facing reuses the same Anthropic client and config as
-vision.py.
+database. Everything model-facing reuses the same OpenAI-compatible client and
+config as vision.py.
 """
 from __future__ import annotations
 
+import json
 import random
 import uuid
 
-from anthropic import Anthropic
+from openai import OpenAI
 
 from . import characters, config, matching
 
-_client = Anthropic(base_url=config.API_BASE_URL, api_key=config.API_KEY)
+_client = OpenAI(base_url=config.API_BASE_URL, api_key=config.API_KEY)
 
 
 # --- teaching template ------------------------------------------------------
@@ -77,28 +78,31 @@ Return your result by calling the `report_persona` tool with these fields:
 """
 
 _PERSONA_TOOL = {
-    "name": "report_persona",
-    "description": "Report the generated roleplay persona for the character.",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "display_name": {
-                "type": "string",
-                "description": "Parody rename: keep the phonetic rhythm, change "
-                "1-2 letters, must NOT be a real name.",
+    "type": "function",
+    "function": {
+        "name": "report_persona",
+        "description": "Report the generated roleplay persona for the character.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "display_name": {
+                    "type": "string",
+                    "description": "Parody rename: keep the phonetic rhythm, change "
+                    "1-2 letters, must NOT be a real name.",
+                },
+                "intro": {
+                    "type": "string",
+                    "description": "One short first-person catchphrase in-voice.",
+                },
+                "persona": {
+                    "type": "string",
+                    "description": "Second-person persona the app speaks as; cadence, "
+                    "catchphrase, personality, how they open, one show-rooted pun. "
+                    "No teaching rules.",
+                },
             },
-            "intro": {
-                "type": "string",
-                "description": "One short first-person catchphrase in-voice.",
-            },
-            "persona": {
-                "type": "string",
-                "description": "Second-person persona the app speaks as; cadence, "
-                "catchphrase, personality, how they open, one show-rooted pun. "
-                "No teaching rules.",
-            },
+            "required": ["display_name", "intro", "persona"],
         },
-        "required": ["display_name", "intro", "persona"],
     },
 }
 
@@ -149,45 +153,48 @@ Return your result by calling `report_cast` with a `characters` array.
 """
 
 _CAST_TOOL = {
-    "name": "report_cast",
-    "description": "Report the generated roleplay cast for the show.",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "characters": {
-                "type": "array",
-                "description": "Roughly 6 (max 8) distinct main characters.",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "original_name": {
-                            "type": "string",
-                            "description": "The real character's name from the "
-                            "show — for our records only, never shown to the "
-                            "learner.",
+    "type": "function",
+    "function": {
+        "name": "report_cast",
+        "description": "Report the generated roleplay cast for the show.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "characters": {
+                    "type": "array",
+                    "description": "Roughly 6 (max 8) distinct main characters.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "original_name": {
+                                "type": "string",
+                                "description": "The real character's name from the "
+                                "show — for our records only, never shown to the "
+                                "learner.",
+                            },
+                            "display_name": {
+                                "type": "string",
+                                "description": "Parody rename: keep the phonetic "
+                                "rhythm, change 1-2 letters, must NOT be a real name.",
+                            },
+                            "intro": {
+                                "type": "string",
+                                "description": "One short first-person catchphrase "
+                                "in-voice.",
+                            },
+                            "persona": {
+                                "type": "string",
+                                "description": "Second-person persona the app "
+                                "speaks as; cadence, catchphrase, personality, how "
+                                "they open, one show-rooted pun. No teaching rules.",
+                            },
                         },
-                        "display_name": {
-                            "type": "string",
-                            "description": "Parody rename: keep the phonetic "
-                            "rhythm, change 1-2 letters, must NOT be a real name.",
-                        },
-                        "intro": {
-                            "type": "string",
-                            "description": "One short first-person catchphrase "
-                            "in-voice.",
-                        },
-                        "persona": {
-                            "type": "string",
-                            "description": "Second-person persona the app "
-                            "speaks as; cadence, catchphrase, personality, how "
-                            "they open, one show-rooted pun. No teaching rules.",
-                        },
+                        "required": ["original_name", "display_name", "intro", "persona"],
                     },
-                    "required": ["original_name", "display_name", "intro", "persona"],
                 },
             },
+            "required": ["characters"],
         },
-        "required": ["characters"],
     },
 }
 
@@ -288,18 +295,21 @@ def generate_persona(show: str, character: str, note: str = "") -> dict:
         base_prompt += f"\nExtra note from the user: {note.strip()}"
 
     def _one_call(extra: str = "") -> dict:
-        resp = _client.messages.create(
+        resp = _client.chat.completions.create(
             model=config.API_MODEL,
             max_tokens=800,
             temperature=0.9,
-            system=_PERSONA_SYSTEM_PROMPT,
             tools=[_PERSONA_TOOL],
-            tool_choice={"type": "tool", "name": "report_persona"},
-            messages=[{"role": "user", "content": base_prompt + extra}],
+            tool_choice={"type": "function", "function": {"name": "report_persona"}},
+            messages=[
+                {"role": "system", "content": _PERSONA_SYSTEM_PROMPT},
+                {"role": "user", "content": base_prompt + extra},
+            ],
         )
-        for block in resp.content:
-            if getattr(block, "type", "") == "tool_use" and block.name == "report_persona":
-                inp = block.input
+        tool_calls = resp.choices[0].message.tool_calls or []
+        for call in tool_calls:
+            if call.function.name == "report_persona":
+                inp = json.loads(call.function.arguments)
                 return {
                     "display_name": str(inp.get("display_name", "")).strip(),
                     "intro": str(inp.get("intro", "")).strip(),
@@ -366,20 +376,23 @@ def generate_cast_for_show(
             + ", ".join(other_names)
         )
 
-    resp = _client.messages.create(
+    resp = _client.chat.completions.create(
         model=config.API_MODEL,
         max_tokens=3000,
         temperature=0.9,
-        system=_CAST_SYSTEM_PROMPT,
         tools=[_CAST_TOOL],
-        tool_choice={"type": "tool", "name": "report_cast"},
-        messages=[{"role": "user", "content": prompt}],
+        tool_choice={"type": "function", "function": {"name": "report_cast"}},
+        messages=[
+            {"role": "system", "content": _CAST_SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ],
     )
 
     raw_items: list = []
-    for block in resp.content:
-        if getattr(block, "type", "") == "tool_use" and block.name == "report_cast":
-            raw_items = block.input.get("characters") or []
+    tool_calls = resp.choices[0].message.tool_calls or []
+    for call in tool_calls:
+        if call.function.name == "report_cast":
+            raw_items = json.loads(call.function.arguments).get("characters") or []
             break
 
     used_norm = {_norm_name(n) for n in same_names + other_names}
@@ -548,12 +561,10 @@ def targets_str(items: list[str]) -> str:
 def _call_model(system: str, messages: list[dict], char: dict | None) -> str:
     """One model call. `char` is unused here but kept for future per-character
     tuning (temperature, max_tokens). Returns the assistant text."""
-    resp = _client.messages.create(
+    resp = _client.chat.completions.create(
         model=config.API_MODEL,
         max_tokens=600,
         temperature=0.9,
-        system=system,
-        messages=messages,
+        messages=[{"role": "system", "content": system}, *messages],
     )
-    parts = [b.text for b in resp.content if getattr(b, "type", "") == "text"]
-    return "".join(parts).strip()
+    return (resp.choices[0].message.content or "").strip()

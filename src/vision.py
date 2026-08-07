@@ -1,5 +1,5 @@
-"""Send a screenshot to Claude via the Anthropic native Messages API and
-extract learn-worthy English expressions."""
+"""Send a screenshot to a vision-capable model via an OpenAI-compatible Chat
+Completions API and extract learn-worthy English expressions."""
 from __future__ import annotations
 
 import ast
@@ -9,12 +9,12 @@ import mimetypes
 import re
 from pathlib import Path
 
-from anthropic import Anthropic
+from openai import OpenAI
 
 from . import config
 from .models import Expression, ScreenshotAnalysis
 
-_client = Anthropic(base_url=config.API_BASE_URL, api_key=config.API_KEY)
+_client = OpenAI(base_url=config.API_BASE_URL, api_key=config.API_KEY)
 
 _SYSTEM_PROMPT = """\
 You are an English-learning assistant for an ADVANCED Chinese learner who watches
@@ -117,60 +117,63 @@ Always report your result by calling the `report_expressions` tool.
 # Tool schema forces the model into valid structured output — no fragile JSON
 # parsing of free-form text.
 _TOOL = {
-    "name": "report_expressions",
-    "description": "Report the English expressions extracted from the screenshot.",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "subtitle_text": {
-                "type": "string",
-                "description": "The raw English text read from the image, or empty string.",
-            },
-            "expressions": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "expression": {"type": "string"},
-                        "meaning_zh": {"type": "string"},
-                        "scenario_zh": {"type": "string"},
-                        "original_line": {
-                            "type": "string",
-                            "description": "The full original subtitle line this "
-                            "expression appeared in, verbatim from the image.",
+    "type": "function",
+    "function": {
+        "name": "report_expressions",
+        "description": "Report the English expressions extracted from the screenshot.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "subtitle_text": {
+                    "type": "string",
+                    "description": "The raw English text read from the image, or empty string.",
+                },
+                "expressions": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "expression": {"type": "string"},
+                            "meaning_zh": {"type": "string"},
+                            "scenario_zh": {"type": "string"},
+                            "original_line": {
+                                "type": "string",
+                                "description": "The full original subtitle line this "
+                                "expression appeared in, verbatim from the image.",
+                            },
+                            "difficulty": {
+                                "type": "string",
+                                "enum": ["初级", "中级", "高级"],
+                            },
+                            "review_sentence": {
+                                "type": "string",
+                                "description": "A NEW spoken-English sentence for review "
+                                "practice, related to the scene, with the target "
+                                "expression replaced by exactly three underscores ___.",
+                            },
+                            "common_structure": {
+                                "type": "string",
+                                "description": "The expression's idiomatic collocation "
+                                "frame with placeholders (sb./sth./one's/optional "
+                                "parts), e.g. 'pull sb. through / pull through sth.'. "
+                                "MUST NOT equal the expression verbatim; empty string "
+                                "if the form is fixed with no variant to teach.",
+                            },
                         },
-                        "difficulty": {
-                            "type": "string",
-                            "enum": ["初级", "中级", "高级"],
-                        },
-                        "review_sentence": {
-                            "type": "string",
-                            "description": "A NEW spoken-English sentence for review "
-                            "practice, related to the scene, with the target "
-                            "expression replaced by exactly three underscores ___.",
-                        },
-                        "common_structure": {
-                            "type": "string",
-                            "description": "The expression's idiomatic collocation "
-                            "frame with placeholders (sb./sth./one's/optional "
-                            "parts), e.g. 'pull sb. through / pull through sth.'. "
-                            "MUST NOT equal the expression verbatim; empty string "
-                            "if the form is fixed with no variant to teach.",
-                        },
+                        "required": [
+                            "expression",
+                            "meaning_zh",
+                            "scenario_zh",
+                            "original_line",
+                            "difficulty",
+                            "review_sentence",
+                            "common_structure",
+                        ],
                     },
-                    "required": [
-                        "expression",
-                        "meaning_zh",
-                        "scenario_zh",
-                        "original_line",
-                        "difficulty",
-                        "review_sentence",
-                        "common_structure",
-                    ],
                 },
             },
+            "required": ["subtitle_text", "expressions"],
         },
-        "required": ["subtitle_text", "expressions"],
     },
 }
 
@@ -320,36 +323,33 @@ def _parse_payload(payload: dict) -> ScreenshotAnalysis:
 def analyze_screenshot(path: Path) -> ScreenshotAnalysis:
     """Analyze one image and return the extracted expressions."""
     mime, data = _encode_image(path)
-    message = _client.messages.create(
+    message = _client.chat.completions.create(
         model=config.API_MODEL,
         max_tokens=2048,
         temperature=0.3,
-        system=_SYSTEM_PROMPT,
         tools=[_TOOL],
-        tool_choice={"type": "tool", "name": "report_expressions"},
+        tool_choice={"type": "function", "function": {"name": "report_expressions"}},
         messages=[
+            {"role": "system", "content": _SYSTEM_PROMPT},
             {
                 "role": "user",
                 "content": [
                     {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": mime,
-                            "data": data,
-                        },
+                        "type": "image_url",
+                        "image_url": {"url": f"data:{mime};base64,{data}"},
                     },
                     {
                         "type": "text",
                         "text": "Extract learn-worthy English expressions from this screenshot.",
                     },
                 ],
-            }
+            },
         ],
     )
-    for block in message.content:
-        if block.type == "tool_use" and block.name == "report_expressions":
-            return _parse_payload(block.input)
+    tool_calls = message.choices[0].message.tool_calls or []
+    for call in tool_calls:
+        if call.function.name == "report_expressions":
+            return _parse_payload(json.loads(call.function.arguments))
     return ScreenshotAnalysis()
 
 
@@ -380,18 +380,21 @@ Always report your result by calling the `report_review_sentence` tool.
 """
 
 _REVIEW_TOOL = {
-    "name": "report_review_sentence",
-    "description": "Report the new review practice sentence for the expression.",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "review_sentence": {
-                "type": "string",
-                "description": "A NEW spoken-English sentence with the target "
-                "expression replaced by exactly three underscores ___.",
+    "type": "function",
+    "function": {
+        "name": "report_review_sentence",
+        "description": "Report the new review practice sentence for the expression.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "review_sentence": {
+                    "type": "string",
+                    "description": "A NEW spoken-English sentence with the target "
+                    "expression replaced by exactly three underscores ___.",
+                },
             },
+            "required": ["review_sentence"],
         },
-        "required": ["review_sentence"],
     },
 }
 
@@ -427,17 +430,21 @@ def generate_review_sentence(
     )
     prompt = "\n".join(lines)
 
-    message = _client.messages.create(
+    message = _client.chat.completions.create(
         model=config.API_MODEL,
         max_tokens=512,
         temperature=0.7,
-        system=_REVIEW_SYSTEM_PROMPT,
         tools=[_REVIEW_TOOL],
-        tool_choice={"type": "tool", "name": "report_review_sentence"},
-        messages=[{"role": "user", "content": [{"type": "text", "text": prompt}]}],
+        tool_choice={"type": "function", "function": {"name": "report_review_sentence"}},
+        messages=[
+            {"role": "system", "content": _REVIEW_SYSTEM_PROMPT},
+            {"role": "user", "content": [{"type": "text", "text": prompt}]},
+        ],
     )
-    for block in message.content:
-        if block.type == "tool_use" and block.name == "report_review_sentence":
-            sentence = str(block.input.get("review_sentence", "")).strip()
+    tool_calls = message.choices[0].message.tool_calls or []
+    for call in tool_calls:
+        if call.function.name == "report_review_sentence":
+            args = json.loads(call.function.arguments)
+            sentence = str(args.get("review_sentence", "")).strip()
             return sentence if "___" in sentence else ""
     return ""

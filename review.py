@@ -393,6 +393,38 @@ def api_chat_end():
     return jsonify({"ok": True, **result})
 
 
+@app.get("/api/debug/ark-key")
+def api_debug_ark_key():
+    """TEMPORARY diagnostic — delete once the Render/Ark 401 is root-caused.
+
+    Reports what this process actually read from the environment for the Ark
+    credentials. Reads os.environ directly (not src.config, which .strip()s
+    values) so a stray leading/trailing space, quote, or newline picked up
+    from the Render dashboard shows up instead of being silently cleaned.
+    Not linked from any page; still sits behind the same login gate as the
+    rest of /api/* (see require_login above), so it isn't publicly reachable.
+    """
+    raw_key = os.environ.get("API_KEY", "")
+    raw_base = os.environ.get("API_BASE_URL", "")
+    raw_model = os.environ.get("API_MODEL", "")
+
+    def _edge_repr(s: str, n: int = 6) -> dict:
+        return {"first": repr(s[:n]), "last": repr(s[-n:]) if len(s) > n else ""}
+
+    return jsonify({
+        "ok": True,
+        "api_key": {"length": len(raw_key), **_edge_repr(raw_key)},
+        "api_base_url": {"value": raw_base, "repr": repr(raw_base)},
+        "api_model": {"value": raw_model, "repr": repr(raw_model)},
+        # Sanity check in case the wrong variable names were filled in on Render.
+        "unexpected_ark_prefixed_vars_present": {
+            "ARK_API_KEY": "ARK_API_KEY" in os.environ,
+            "ARK_BASE_URL": "ARK_BASE_URL" in os.environ,
+            "ARK_MODEL": "ARK_MODEL" in os.environ,
+        },
+    })
+
+
 def main() -> None:
     # Sanity-check required config up front with a clear message.
     _ = config.NOTION_TOKEN, config.NOTION_DATABASE_ID
