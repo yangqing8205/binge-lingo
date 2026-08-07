@@ -1,0 +1,118 @@
+import json
+import os
+import unittest
+from types import SimpleNamespace
+from unittest.mock import patch
+
+
+os.environ.setdefault("API_BASE_URL", "https://example.invalid/api/v3")
+os.environ.setdefault("API_KEY", "test-key")
+os.environ.setdefault("API_MODEL", "test-model")
+os.environ.setdefault("NOTION_TOKEN", "test-notion-token")
+os.environ.setdefault("NOTION_DATABASE_ID", "test-database-id")
+os.environ.setdefault("APP_PASSWORD", "test-password")
+os.environ.setdefault("SECRET_KEY", "test-secret")
+
+from src import chat  # noqa: E402
+import review  # noqa: E402
+
+
+def _tool_response(items):
+    call = SimpleNamespace(
+        function=SimpleNamespace(
+            name="report_cast",
+            arguments=json.dumps({"characters": items}),
+        )
+    )
+    message = SimpleNamespace(tool_calls=[call])
+    return SimpleNamespace(choices=[SimpleNamespace(message=message)])
+
+
+class CastGenerationTests(unittest.TestCase):
+    def test_requested_count_limits_prompt_tokens_and_results(self):
+        names = [
+            ("Walter White", "Wilter White"),
+            ("Jesse Pinkman", "Jesse Pinkling"),
+            ("Skyler White", "Skyler Whibe"),
+            ("Hank Schrader", "Hank Schradar"),
+            ("Saul Goodman", "Saul Goodmand"),
+        ]
+        items = [
+            {
+                "original_name": original_name,
+                "display_name": display_name,
+                "intro": f"Intro {index}",
+                "persona": f"Persona {index}",
+            }
+            for index, (original_name, display_name) in enumerate(names)
+        ]
+        fake_client = SimpleNamespace(
+            chat=SimpleNamespace(
+                completions=SimpleNamespace(create=lambda **kwargs: _tool_response(items))
+            )
+        )
+
+        with patch.object(chat, "_client", fake_client):
+            result = chat.generate_cast_for_show("Breaking Bad", requested_count=3)
+
+        self.assertEqual(3, len(result))
+
+    def test_requested_count_is_sent_to_the_model(self):
+        captured = {}
+
+        def create(**kwargs):
+            captured.update(kwargs)
+            return _tool_response([])
+
+        fake_client = SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(create=create))
+        )
+
+        with patch.object(chat, "_client", fake_client):
+            chat.generate_cast_for_show("Breaking Bad", requested_count=3)
+
+        self.assertEqual(1600, captured["max_tokens"])
+        user_prompt = captured["messages"][-1]["content"]
+        self.assertIn("Generate exactly 3 new characters", user_prompt)
+
+
+class CastRouteTests(unittest.TestCase):
+    def setUp(self):
+        review.app.config.update(TESTING=True, SECRET_KEY="test-secret")
+        self.client = review.app.test_client()
+        with self.client.session_transaction() as session:
+            session["authed"] = True
+
+    def test_route_requests_at_most_three_missing_characters(self):
+        existing = [
+            {
+                "key": "custom_1",
+                "name": "Wilter White",
+                "source_show": "Breaking Bad",
+            },
+            {
+                "key": "custom_2",
+                "name": "Jesse Pinkling",
+                "source_show": "Breaking Bad",
+            },
+        ]
+
+        with (
+            patch.object(review.characters, "list_characters", side_effect=[existing, existing]),
+            patch.object(review.chat, "generate_cast_for_show", return_value=[]) as generate,
+        ):
+            response = self.client.post(
+                "/api/characters/for-show", json={"show": "Breaking Bad"}
+            )
+
+        self.assertEqual(200, response.status_code)
+        generate.assert_called_once_with(
+            "Breaking Bad",
+            ["Wilter White", "Jesse Pinkling"],
+            [],
+            requested_count=3,
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()

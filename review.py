@@ -289,7 +289,8 @@ def api_characters_create():
     return jsonify({"ok": True, "character": created})
 
 
-_CAST_TARGET = 6  # roughly this many main characters per show, cap 8 (see chat.py)
+_CAST_TARGET = 6  # eventual cast size per show
+_CAST_BATCH_SIZE = 3  # keep each Ark call safely below Gunicorn's timeout
 
 
 @app.post("/api/characters/for-show")
@@ -320,7 +321,13 @@ def api_characters_for_show():
         same_names = [c["name"] for c in existing]
         other_names = [c["name"] for c in characters.list_characters()
                        if c["key"] not in existing_keys]
-        personas = chat.generate_cast_for_show(show, same_names, other_names)
+        requested_count = min(_CAST_BATCH_SIZE, _CAST_TARGET - len(existing))
+        personas = chat.generate_cast_for_show(
+            show,
+            same_names,
+            other_names,
+            requested_count=requested_count,
+        )
         created = []
         for persona in personas:
             color = characters.pick_color(persona["display_name"] or show)
