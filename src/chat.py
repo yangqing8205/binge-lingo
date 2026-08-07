@@ -19,7 +19,12 @@ from openai import OpenAI
 
 from . import characters, config, matching
 
-_client = OpenAI(base_url=config.API_BASE_URL, api_key=config.API_KEY)
+_client = OpenAI(
+    base_url=config.API_BASE_URL,
+    api_key=config.API_KEY,
+    timeout=90.0,
+    max_retries=0,
+)
 
 
 # --- teaching template ------------------------------------------------------
@@ -336,6 +341,7 @@ def generate_cast_for_show(
     show: str,
     same_show_names: list[str] | None = None,
     other_show_names: list[str] | None = None,
+    requested_count: int = 3,
 ) -> list[dict]:
     """Generate a whole main-cast top-up for a show in ONE model call.
 
@@ -350,6 +356,10 @@ def generate_cast_for_show(
     pure collision-avoidance, must not be reused, but don't count toward this
     show's target.
 
+    `requested_count` caps this single call at three new characters so it can
+    finish comfortably inside the web server's request timeout. Later calls
+    can continue topping the show up toward the route's overall cast target.
+
     Returns a list of {"display_name", "intro", "persona"} — degrades
     gracefully: any item that's malformed, a name collision (within the batch
     or against either name list), or a rename that's too close to the real
@@ -361,8 +371,12 @@ def generate_cast_for_show(
         raise ValueError("Show is required.")
     same_names = [n.strip() for n in (same_show_names or []) if n.strip()]
     other_names = [n.strip() for n in (other_show_names or []) if n.strip()]
+    requested_count = max(1, min(int(requested_count), 3))
 
-    prompt = f"Show: {show}"
+    prompt = (
+        f"Show: {show}\n\n"
+        f"Generate exactly {requested_count} new characters in this call."
+    )
     if same_names:
         prompt += (
             "\n\nAlready used FOR THIS SHOW (do not re-pick the real character "
@@ -378,7 +392,7 @@ def generate_cast_for_show(
 
     resp = _client.chat.completions.create(
         model=config.API_MODEL,
-        max_tokens=3000,
+        max_tokens=1600,
         temperature=0.9,
         tools=[_CAST_TOOL],
         tool_choice={"type": "function", "function": {"name": "report_cast"}},
@@ -413,8 +427,8 @@ def generate_cast_for_show(
             continue  # rename too close to (or a truncation of) the real name
         used_norm.add(norm)
         result.append({"display_name": display_name, "intro": intro, "persona": persona})
-        if len(result) >= 8:
-            break  # hard cap regardless of what the model returned
+        if len(result) >= requested_count:
+            break  # per-request latency cap regardless of model over-generation
     return result
 
 

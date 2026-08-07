@@ -19,6 +19,7 @@ from flask import (
     send_from_directory,
     session,
 )
+from openai import APITimeoutError
 
 from src import characters, chat, config, matching, notion_reader, review_log, settings
 
@@ -289,7 +290,8 @@ def api_characters_create():
     return jsonify({"ok": True, "character": created})
 
 
-_CAST_TARGET = 6  # roughly this many main characters per show, cap 8 (see chat.py)
+_CAST_TARGET = 6  # eventual cast size per show
+_CAST_BATCH_SIZE = 3  # keep each Ark call safely below Gunicorn's timeout
 
 
 @app.post("/api/characters/for-show")
@@ -320,7 +322,13 @@ def api_characters_for_show():
         same_names = [c["name"] for c in existing]
         other_names = [c["name"] for c in characters.list_characters()
                        if c["key"] not in existing_keys]
-        personas = chat.generate_cast_for_show(show, same_names, other_names)
+        requested_count = min(_CAST_BATCH_SIZE, _CAST_TARGET - len(existing))
+        personas = chat.generate_cast_for_show(
+            show,
+            same_names,
+            other_names,
+            requested_count=requested_count,
+        )
         created = []
         for persona in personas:
             color = characters.pick_color(persona["display_name"] or show)
@@ -334,6 +342,9 @@ def api_characters_for_show():
     except ValueError as exc:
         log.warning("for-show: bad input for show=%r: %s", show, exc)
         return jsonify({"ok": False, "error": str(exc)}), 400
+    except APITimeoutError:
+        log.warning("for-show: Ark timed out for show=%r", show)
+        return jsonify({"ok": False, "error": "角色生成超时，请稍后重试。"}), 504
     except Exception as exc:  # noqa: BLE001 — surface to the UI as JSON
         # Full traceback to the deploy log so silent generation failures (gateway
         # errors, tool-call parsing, DB writes) are diagnosable.
@@ -391,38 +402,6 @@ def api_chat_end():
     except Exception as exc:  # noqa: BLE001
         return jsonify({"ok": False, "error": str(exc)}), 502
     return jsonify({"ok": True, **result})
-
-
-@app.get("/api/debug/ark-key")
-def api_debug_ark_key():
-    """TEMPORARY diagnostic — delete once the Render/Ark 401 is root-caused.
-
-    Reports what this process actually read from the environment for the Ark
-    credentials. Reads os.environ directly (not src.config, which .strip()s
-    values) so a stray leading/trailing space, quote, or newline picked up
-    from the Render dashboard shows up instead of being silently cleaned.
-    Not linked from any page; still sits behind the same login gate as the
-    rest of /api/* (see require_login above), so it isn't publicly reachable.
-    """
-    raw_key = os.environ.get("API_KEY", "")
-    raw_base = os.environ.get("API_BASE_URL", "")
-    raw_model = os.environ.get("API_MODEL", "")
-
-    def _edge_repr(s: str, n: int = 6) -> dict:
-        return {"first": repr(s[:n]), "last": repr(s[-n:]) if len(s) > n else ""}
-
-    return jsonify({
-        "ok": True,
-        "api_key": {"length": len(raw_key), **_edge_repr(raw_key)},
-        "api_base_url": {"value": raw_base, "repr": repr(raw_base)},
-        "api_model": {"value": raw_model, "repr": repr(raw_model)},
-        # Sanity check in case the wrong variable names were filled in on Render.
-        "unexpected_ark_prefixed_vars_present": {
-            "ARK_API_KEY": "ARK_API_KEY" in os.environ,
-            "ARK_BASE_URL": "ARK_BASE_URL" in os.environ,
-            "ARK_MODEL": "ARK_MODEL" in os.environ,
-        },
-    })
 
 
 def main() -> None:
