@@ -26,6 +26,8 @@ _client = OpenAI(
     max_retries=0,
 )
 
+_NO_THINKING = {"thinking": {"type": "disabled"}}
+
 
 # --- teaching template ------------------------------------------------------
 # The shared tutoring rules, hardcoded once and reused by EVERY character
@@ -304,6 +306,7 @@ def generate_persona(show: str, character: str, note: str = "") -> dict:
             model=config.API_MODEL,
             max_tokens=800,
             temperature=0.9,
+            extra_body=_NO_THINKING,
             tools=[_PERSONA_TOOL],
             tool_choice={"type": "function", "function": {"name": "report_persona"}},
             messages=[
@@ -394,6 +397,7 @@ def generate_cast_for_show(
         model=config.API_MODEL,
         max_tokens=1600,
         temperature=0.9,
+        extra_body=_NO_THINKING,
         tools=[_CAST_TOOL],
         tool_choice={"type": "function", "function": {"name": "report_cast"}},
         messages=[
@@ -579,6 +583,7 @@ def _call_model(system: str, messages: list[dict], char: dict | None) -> str:
         model=config.API_MODEL,
         max_tokens=600,
         temperature=0.9,
+        extra_body=_NO_THINKING,
         messages=[{"role": "system", "content": system}, *messages],
     )
     return (resp.choices[0].message.content or "").strip()

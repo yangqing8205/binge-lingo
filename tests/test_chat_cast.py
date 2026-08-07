@@ -31,6 +31,21 @@ def _tool_response(items):
     return SimpleNamespace(choices=[SimpleNamespace(message=message)])
 
 
+def _persona_response():
+    call = SimpleNamespace(
+        function=SimpleNamespace(
+            name="report_persona",
+            arguments=json.dumps({
+                "display_name": "Wilter White",
+                "intro": "I am the one who conjugates.",
+                "persona": "You are Wilter White, precise and intimidating.",
+            }),
+        )
+    )
+    message = SimpleNamespace(tool_calls=[call])
+    return SimpleNamespace(choices=[SimpleNamespace(message=message)])
+
+
 class CastGenerationTests(unittest.TestCase):
     def test_requested_count_limits_prompt_tokens_and_results(self):
         names = [
@@ -75,8 +90,30 @@ class CastGenerationTests(unittest.TestCase):
             chat.generate_cast_for_show("Breaking Bad", requested_count=3)
 
         self.assertEqual(1600, captured["max_tokens"])
+        self.assertEqual(
+            {"thinking": {"type": "disabled"}}, captured["extra_body"]
+        )
         user_prompt = captured["messages"][-1]["content"]
         self.assertIn("Generate exactly 3 new characters", user_prompt)
+
+    def test_persona_generation_disables_thinking(self):
+        captured = {}
+
+        def create(**kwargs):
+            captured.update(kwargs)
+            return _persona_response()
+
+        fake_client = SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(create=create))
+        )
+
+        with patch.object(chat, "_client", fake_client):
+            result = chat.generate_persona("Breaking Bad", "Walter White")
+
+        self.assertEqual("Wilter White", result["display_name"])
+        self.assertEqual(
+            {"thinking": {"type": "disabled"}}, captured["extra_body"]
+        )
 
 
 class CastRouteTests(unittest.TestCase):
