@@ -43,7 +43,7 @@ async function loadCharacters() {
   try {
     const qs = chat.currentShow ? "?show=" + encodeURIComponent(chat.currentShow) : "";
     const res = await fetch("/api/characters" + qs);
-    const data = await res.json();
+    const data = await readApiResponse(res);
     if (!data.ok) return;
     chat.characters = data.characters || [];
     renderCharGrid();
@@ -59,7 +59,7 @@ async function loadCharacters() {
 async function prepareSceneCharacter() {
   try {
     const res = await fetch("/api/current-show");
-    const data = await res.json();
+    const data = await readApiResponse(res);
     chat.currentShow = (data && data.ok && data.show) || "";
   } catch (_) {
     chat.currentShow = "";
@@ -79,7 +79,7 @@ async function prepareSceneCharacter() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ show: chat.currentShow }),
     });
-    const data = await res.json();
+    const data = await readApiResponse(res);
     chat.generating = false;
     if (data.ok) {
       chat.sceneError = "";
@@ -198,7 +198,7 @@ async function createCharacter() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ show, character, note }),
     });
-    const data = await res.json();
+    const data = await readApiResponse(res);
     if (!data.ok) {
       chatEl.newErr.hidden = false;
       chatEl.newErr.textContent = "生成失败：" + (data.error || "未知错误");
@@ -224,7 +224,7 @@ async function deleteCharacter(c) {
     const res = await fetch("/api/characters/" + encodeURIComponent(c.key), {
       method: "DELETE",
     });
-    const data = await res.json();
+    const data = await readApiResponse(res);
     if (!data.ok) {
       alert("删除失败：" + (data.error || "未知错误"));
       return;
@@ -286,7 +286,7 @@ async function startChat(c) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ character: c.key }),
     });
-    const data = await res.json();
+    const data = await readApiResponse(res);
     t.remove();
     if (!data.ok) {
       bubble("ai", "开场失败：" + (data.error || "未知错误"));
@@ -315,7 +315,7 @@ async function sendChat() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ session_id: chat.session.id, message: msg }),
     });
-    const data = await res.json();
+    const data = await readApiResponse(res);
     t.remove();
     if (!data.ok) {
       bubble("ai", "出错了：" + (data.error || "未知错误"));
@@ -357,7 +357,7 @@ async function endChat() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ session_id: chat.session.id }),
     });
-    const data = await res.json();
+    const data = await readApiResponse(res);
     t.remove();
     if (!data.ok) {
       bubble("ai", "点评失败：" + (data.error || "未知错误"));
