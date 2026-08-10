@@ -438,7 +438,7 @@ git add tests/test_repository_accuracy.py docs/superpowers/plans/2026-08-10-bili
 git commit -m "test: protect bilingual README positioning"
 ```
 
-- [ ] **Step 4: Push to GitHub**
+- [x] **Step 4: Push to GitHub**
 
 ```bash
 git push origin main
@@ -446,7 +446,7 @@ git push origin main
 
 Expected: GitHub accepts the commits on `main`.
 
-- [ ] **Step 5: Verify the published bilingual README files**
+- [x] **Step 5: Verify the published bilingual README files**
 
 ```bash
 gh api repos/yangqing8205/binge-lingo/readme \
