@@ -1,17 +1,22 @@
 # BingeLingo
 
+<div align="right">
+  <strong>English</strong> | <a href="./README_CN.md">简体中文</a>
+</div>
+
 **Turn subtitle screenshots into a reusable English learning loop — capture
 expressions, review them in context, and practise through character conversations.**
 
 [Portfolio](https://yangqingportfolio.com.cn) · Personal MVP · macOS-first capture workflow
 
-BingeLingo is an independent AI product experiment for advanced English learners.
-It starts with a familiar habit—saving a subtitle screenshot—and carries the
-expression beyond collection into contextual recall and speaking practice.
+BingeLingo is an independent AI product experiment for English learners who want
+to turn expressions from shows into language they can actively use. It starts with
+a familiar habit—saving a subtitle screenshot—and carries the expression beyond
+collection into contextual recall and speaking practice.
 
 ## Why I built it
 
-Advanced learners often understand an idiom, phrasal verb, collocation, or slang
+English learners often understand an idiom, phrasal verb, collocation, or slang
 expression while watching a show but cannot retrieve it when speaking. Screenshots
 accumulate, AI explanations disappear into chat history, and manually organizing
 examples interrupts the viewing experience. BingeLingo connects those fragmented
@@ -40,9 +45,9 @@ Practice to Go prompt for another AI chat tool
 - A macOS watcher monitors a dedicated screenshot folder.
 - A vision-capable model is called through the OpenAI Python SDK and an
   OpenAI-compatible Chat Completions endpoint.
-- The extraction prompt focuses on expressions an advanced learner understands
-  but may not actively produce: idioms, phrasal verbs, fixed collocations, slang,
-  and tone-carrying colloquialisms.
+- The extraction prompt focuses on useful expressions that are easy to recognize
+  but harder to produce naturally: idioms, phrasal verbs, fixed collocations,
+  slang, and tone-carrying colloquialisms.
 - Tool Calling returns structured fields instead of relying on free-form text.
 - Each Notion entry stores meaning, context, original subtitle, difficulty,
   review sentence, collocation frame, show, episode, and the source screenshot.
