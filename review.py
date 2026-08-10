@@ -281,6 +281,8 @@ def api_characters_create():
             intro=persona["intro"],
             color=color,
             persona=persona["persona"],
+            card=persona["card"],
+            card_tier="full",
         )
     except ValueError as exc:
         return jsonify({"ok": False, "error": str(exc)}), 400
@@ -330,6 +332,8 @@ def api_characters_for_show():
                 intro=persona["intro"],
                 color=color,
                 persona=persona["persona"],
+                card=persona["card"],
+                card_tier=persona["card_tier"],
             ))
     except ValueError as exc:
         log.warning("for-show: bad input for show=%r: %s", show, exc)

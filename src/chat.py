@@ -8,9 +8,23 @@ drops character and grades which target expressions actually came out.
 Sessions live in a plain in-memory dict — this is a single-user local tool, so no
 database. Everything model-facing reuses the same OpenAI-compatible client and
 config as vision.py.
+
+Character generation produces a structured CARD (see characters.py's module
+docstring for the schema) rather than a flat persona string. Cast generation for
+a new show is split into two stages so it stays fast even with a bigger schema:
+  1. select_cast_characters() — one cheap call that just decides WHICH ~6
+     characters to make (names + one-line intros).
+  2. _generate_starter_card() — one call PER selected character, fanned out in
+     PARALLEL via a thread pool. Wall-clock is ~one character's worth of work,
+     not 6x, however many fields the card grows to carry.
+Each character's card starts "starter" (1-2 signature_moves, 1 opening_variant)
+and is topped up to "full" lazily, the first time it's actually selected for a
+chat (see _ensure_full_card, called from start_session) — spreading that cost
+across first-uses instead of paying it for every character up front.
 """
 from __future__ import annotations
 
+import concurrent.futures
 import json
 import random
 import uuid
@@ -20,6 +34,11 @@ from openai import OpenAI
 from . import characters, config, matching
 
 _client = OpenAI(base_url=config.API_BASE_URL, api_key=config.API_KEY)
+
+# Cap on parallel fanout calls for cast generation — bounds concurrent load on
+# the gateway regardless of how many characters get selected (max 8, see
+# select_cast_characters).
+_MAX_PARALLEL_WORKERS = 8
 
 
 # --- teaching template ------------------------------------------------------
@@ -43,17 +62,7 @@ _TEACHING_TEMPLATE = (
 )
 
 
-# --- persona generation -----------------------------------------------------
-# Builds the PERSONA layer for a user-requested character (teaching rules stay
-# in the template above). No web access on this gateway — the model relies on
-# its own knowledge; for obscure characters it may invent, which is acceptable.
-_PERSONA_SYSTEM_PROMPT = """\
-You design a roleplay PERSONA for an English-conversation practice app. Given a
-show and a character from it, you produce a punchy persona the app can speak as.
-You do NOT write teaching rules — the app adds those separately.
-
-Return your result by calling the `report_persona` tool with these fields:
-
+_RENAME_RULE_TEXT = """\
 - display_name: a PARODY rename of the character. RULES (follow exactly):
   * Keep the original name's phonetic RHYTHM and syllable count.
   * Change only ONE or TWO letters from the original.
@@ -63,18 +72,187 @@ Return your result by calling the `report_persona` tool with these fields:
   BAD (never do this):
     * "Jesse P." or "Jesse" — that is not a rename, it just truncates.
     * "Jesse Pinkerton" — that swaps in a DIFFERENT real surname.
-  GOOD shape: tweak sounds, e.g. Jesse Pinkman -> Jesse Pinkling / Jessie Pinkman.
+  GOOD shape: tweak sounds, e.g. Jesse Pinkman -> Jesse Pinkling / Jessie Pinkman.\
+"""
+
+# Shared across every card-generation prompt (single character, cast selection,
+# starter card, and lazy completion) — NOT specific to any one show. These are
+# the three rules the user asked for: cite a source per feature, make `avoid`
+# name something specific to THIS character rather than the archetype, and
+# force a self-check that catches interchangeable, could-be-anyone writing.
+_CARD_HARD_RULES = """\
+HARD RULES (apply to every feature you write, for any show or character):
+
+1. SOURCE EVERY FEATURE. Each entry in signature_moves, and the voice
+   description itself, must carry an `evidence` object: {quote, confidence,
+   source} — `source` is the scene/episode/moment you're recalling (e.g. "the
+   pilot, when he first meets the pharmacist" — a rough description is fine,
+   you don't need an exact episode number). If you cannot name where a trait
+   comes from, DO NOT WRITE IT — write fewer, sourced features instead of
+   padding the list with unsourced ones.
+
+2. DO NOT PRETEND TO HAVE A PERFECT MEMORY. For each `evidence.quote`, set
+   `confidence` to "verbatim" ONLY if you are genuinely confident that is the
+   real, word-for-word line. If you are recalling the gist/style of a moment
+   but are not sure of the exact wording, set `confidence` to "reconstructed"
+   and write `quote` as a line that fits that style — NOT as if it were a
+   verified citation. Never dress up an invented line as "verbatim". When in
+   doubt, use "reconstructed".
+
+3. AVOID must name what's specific to THIS character, not the archetype.
+   Every item in `avoid` must point at something that would NOT equally apply
+   to other characters of the same broad type. A generic line like "don't make
+   her too strict" is USELESS — it fits any strict-mom-type character ever
+   written, so it doesn't belong in this card.
+   BAD (interchangeable — could describe any character of this archetype):
+     "Don't make him too dumb" / "Don't be overly dramatic" / "Don't be a
+     one-note villain"
+   GOOD (specific to this character, not swappable with a same-type
+   character): "Her care always comes wrapped in a scoreboard — she never
+   just says 'I told you so', she keeps literal count and brings up the tally
+   weeks later" (specific mechanism, not just a trait label).
+
+4. SELF-CHECK EACH signature_move BEFORE reporting it: fill `distinct_because`
+   by asking yourself "if I swapped in a different character of the same
+   general type (same job, same family role, same personality archetype), would
+   this move still make sense for them too?" If the honest answer is "yes,
+   this is generic/interchangeable", REWRITE the move to be more specific to
+   THIS character (drawing on the sourced scene from rule 1) before reporting
+   it — don't report the generic version.
+"""
+
+_EVIDENCE_SCHEMA = {
+    "type": "object",
+    "description": "Where this trait comes from — required, never omit.",
+    "properties": {
+        "quote": {
+            "type": "string",
+            "description": "The line/moment itself — verbatim if confidence is "
+            "'verbatim', otherwise a reconstructed line in that style.",
+        },
+        "confidence": {
+            "type": "string",
+            "enum": ["verbatim", "reconstructed"],
+            "description": "'verbatim' ONLY if you're genuinely confident this is "
+            "the real word-for-word line. Otherwise 'reconstructed' — a line "
+            "that fits the character's style, not presented as a real citation.",
+        },
+        "source": {
+            "type": "string",
+            "description": "Which scene/episode/moment this is from (rough "
+            "description is fine, e.g. 'the pilot, meeting the new neighbor').",
+        },
+    },
+    "required": ["quote", "confidence", "source"],
+}
+
+_CARD_SCHEMA_PROPERTIES = {
+    "voice": {
+        "type": "object",
+        "description": "How this character sounds when speaking.",
+        "properties": {
+            "pace": {"type": "string", "description": "Speaking speed/rhythm."},
+            "sentence_length": {"type": "string", "description": "Typical sentence "
+                "length and structure."},
+            "vocabulary": {"type": "string", "description": "Word choice register "
+                "— formal/slangy/technical/etc."},
+            "tone": {"type": "string", "description": "Overall tone."},
+            "emotional_range": {"type": "string", "description": "How much and "
+                "how visibly emotion shows/shifts."},
+            "evidence": _EVIDENCE_SCHEMA,
+        },
+        "required": ["pace", "sentence_length", "vocabulary", "tone",
+                      "emotional_range", "evidence"],
+    },
+    "signature_moves": {
+        "type": "array",
+        "description": "1 or more sourced, character-specific interaction "
+        "patterns pulled from real moments — never invented from the archetype.",
+        "items": {
+            "type": "object",
+            "properties": {
+                "name": {"type": "string", "description": "Short name for the move."},
+                "steps": {"type": "array", "items": {"type": "string"},
+                          "description": "The structural steps of this move, in order."},
+                "frequency": {"type": "string", "description": "How often this "
+                    "move tends to come up, e.g. 'every session opener', 'rare, "
+                    "maybe once per long conversation'."},
+                "evidence": _EVIDENCE_SCHEMA,
+                "distinct_because": {"type": "string", "description": "Why this "
+                    "specific move would NOT fit an interchangeable character of "
+                    "the same archetype — the rule-4 self-check, required."},
+            },
+            "required": ["name", "steps", "frequency", "evidence", "distinct_because"],
+        },
+    },
+    "format_style": {
+        "type": "object",
+        "description": "What typographic habits this character's replies use.",
+        "properties": {
+            "caps": {"type": "string", "description": "When/how ALL CAPS is used, "
+                "if at all."},
+            "bold": {"type": "string", "description": "When/how **bold** is used, "
+                "if at all."},
+            "ellipsis": {"type": "string", "description": "When/how '...' is used, "
+                "if at all."},
+            "exclaim": {"type": "string", "description": "How freely '!' is used."},
+            "notes": {"type": "string", "description": "Any other formatting quirk."},
+        },
+        "required": ["caps", "bold", "ellipsis", "exclaim", "notes"],
+    },
+    "opening_variants": {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": "Several DIFFERENT ways this character might kick off a "
+        "conversation, in their voice.",
+    },
+    "relationship_style": {
+        "type": "object",
+        "description": "How this character relates to the learner they're chatting with.",
+        "properties": {
+            "address_terms": {"type": "array", "items": {"type": "string"},
+                "description": "What they tend to call the person they're talking to."},
+            "encouragement_style": {"type": "string", "description": "How they "
+                "encourage the learner, in their voice."},
+            "teasing_style": {"type": "string", "description": "How they tease/"
+                "needle the learner, in their voice (if they do at all)."},
+        },
+        "required": ["address_terms", "encouragement_style", "teasing_style"],
+    },
+    "avoid": {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": "Character-specific pitfalls per rule 3 — each one must "
+        "name something that would NOT equally apply to other characters of the "
+        "same archetype.",
+    },
+}
+
+
+# --- persona generation -----------------------------------------------------
+# Builds the CARD layer for a user-requested character (teaching rules stay in
+# the template above). No web access on this gateway — the model relies on its
+# own knowledge; for obscure characters it may invent, which the hard rules
+# above are meant to catch (label as "reconstructed" rather than pass off as fact).
+_PERSONA_SYSTEM_PROMPT = f"""\
+You design a roleplay CARD for an English-conversation practice app. Given a
+show and a character from it, you produce a structured card the app uses to
+speak as that character. You do NOT write teaching rules — the app adds those
+separately.
+
+{_CARD_HARD_RULES}
+
+Return your result by calling the `report_persona` tool with these fields:
+
+{_RENAME_RULE_TEXT}
 
 - intro: one short first-person catchphrase in the character's voice (English,
   or mixed with a little Chinese if it fits), like a chat-app status line. See
   the built-ins: "I've got a Fil-osophy for every situation. You're welcome."
 
-- persona: a compact second-person description the app speaks AS. Cover, in a
-  few sentences: speaking cadence and tone; a signature catchphrase or sentence
-  pattern; core personality; how they tend to open a conversation; and ONE
-  wordplay/pun bit rooted in the real show (the built-in "Fil-osophy" is the
-  reference). Write it as direct instruction: "You are <name>, ...". Do not
-  include any teaching or practice instructions.
+- card: the structured card (voice, signature_moves, format_style,
+  opening_variants, relationship_style, avoid) — this is a single, complete
+  card, so aim for 2-4 signature_moves and 2-3 opening_variants.
 """
 
 _PERSONA_TOOL = {
@@ -94,14 +272,13 @@ _PERSONA_TOOL = {
                     "type": "string",
                     "description": "One short first-person catchphrase in-voice.",
                 },
-                "persona": {
-                    "type": "string",
-                    "description": "Second-person persona the app speaks as; cadence, "
-                    "catchphrase, personality, how they open, one show-rooted pun. "
-                    "No teaching rules.",
+                "card": {
+                    "type": "object",
+                    "properties": _CARD_SCHEMA_PROPERTIES,
+                    "required": list(_CARD_SCHEMA_PROPERTIES.keys()),
                 },
             },
-            "required": ["display_name", "intro", "persona"],
+            "required": ["display_name", "intro", "card"],
         },
     },
 }
@@ -109,14 +286,21 @@ _PERSONA_TOOL = {
 
 # --- cast generation ---------------------------------------------------------
 # Generating one auto-character per show left every non-built-in show with a
-# cast of exactly one. This generates a whole main-cast group in a single model
-# call (never one call per character) so a fresh show gets several characters
-# to pick from, same as Modern Family's ten built-ins.
-_CAST_SYSTEM_PROMPT = """\
-You design a roleplay CAST for an English-conversation practice app, covering
+# cast of exactly one. This builds a whole main-cast group, but split into two
+# stages so a bigger per-character schema doesn't blow up wall-clock time:
+#   1. select_cast_characters() — ONE cheap call, no card fields at all, just
+#      decides which ~6 characters to make.
+#   2. _generate_starter_card() — ONE call PER selected character, fanned out
+#      in a thread pool (see generate_cast_for_show) so total time is close to
+#      a single character's generation time, not N times that.
+
+_CAST_SELECT_SYSTEM_PROMPT = """\
+You pick a roleplay CAST for an English-conversation practice app, covering
 several of a show's main characters at once. Given a show name, and optionally
 (a) parody names already used FOR THIS SHOW and (b) parody names already used
-by OTHER shows, pick this show's main characters and give each one a persona.
+by OTHER shows, pick this show's main characters and rename each one. You do
+NOT write personas here — that happens in a separate step, one character at a
+time. Just pick names.
 
 RULES:
 - Pick roughly 6 main characters for this show in total — never fewer than 3,
@@ -141,22 +325,18 @@ RULES:
   BAD (never do this): "Jesse P." (truncation, not a rename); "Jesse
   Pinkerton" (swaps in a different real surname).
   GOOD shape: Jesse Pinkman -> Jesse Pinkling / Jessie Pinkman.
-- For each character also write: intro (one short first-person catchphrase in
+- For each character also write intro: one short first-person catchphrase in
   their voice, like a chat-app status line — e.g. "I've got a Fil-osophy for
-  every situation. You're welcome.") and persona (a compact second-person
-  description the app speaks AS — cadence and tone, a signature catchphrase or
-  sentence pattern, core personality, how they tend to open a conversation, and
-  ONE wordplay/pun bit rooted in the real show. Write it as direct instruction:
-  "You are <name>, ...". No teaching or practice instructions.)
+  every situation. You're welcome."
 
-Return your result by calling `report_cast` with a `characters` array.
+Return your result by calling `report_cast_selection` with a `characters` array.
 """
 
-_CAST_TOOL = {
+_CAST_SELECT_TOOL = {
     "type": "function",
     "function": {
-        "name": "report_cast",
-        "description": "Report the generated roleplay cast for the show.",
+        "name": "report_cast_selection",
+        "description": "Report which characters were picked for this show's cast.",
         "parameters": {
             "type": "object",
             "properties": {
@@ -182,14 +362,8 @@ _CAST_TOOL = {
                                 "description": "One short first-person catchphrase "
                                 "in-voice.",
                             },
-                            "persona": {
-                                "type": "string",
-                                "description": "Second-person persona the app "
-                                "speaks as; cadence, catchphrase, personality, how "
-                                "they open, one show-rooted pun. No teaching rules.",
-                            },
                         },
-                        "required": ["original_name", "display_name", "intro", "persona"],
+                        "required": ["original_name", "display_name", "intro"],
                     },
                 },
             },
@@ -197,6 +371,145 @@ _CAST_TOOL = {
         },
     },
 }
+
+# The per-character starter-card call — one of these runs per selected
+# character, in parallel. Deliberately thinner than the full single-character
+# card (generate_persona): fewer signature_moves, one opening_variant. The
+# rest (format_style/relationship_style/avoid) are asked for in full since
+# those are short lists anyway and don't meaningfully add to latency.
+_STARTER_CARD_SYSTEM_PROMPT = f"""\
+You design a STARTER roleplay card for one already-chosen character from a
+show, for an English-conversation practice app. The name is already decided —
+you only fill in the card. Keep this pass DELIBERATELY LIGHT: exactly 1-2
+signature_moves and exactly 1 opening_variant (a fuller version gets generated
+later, only if this character is actually picked for a chat). Still give the
+full voice, format_style, relationship_style, and avoid — those are short and
+worth getting right from the start.
+
+{_CARD_HARD_RULES}
+
+Return your result by calling `report_starter_card` with a `card` field.
+"""
+
+_STARTER_CARD_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "report_starter_card",
+        "description": "Report the generated starter card for this character.",
+        "parameters": {
+            "type": "object",
+            "properties": {"card": {
+                "type": "object",
+                "properties": _CARD_SCHEMA_PROPERTIES,
+                "required": list(_CARD_SCHEMA_PROPERTIES.keys()),
+            }},
+            "required": ["card"],
+        },
+    },
+}
+
+
+def select_cast_characters(
+    show: str,
+    same_show_names: list[str] | None = None,
+    other_show_names: list[str] | None = None,
+) -> list[dict]:
+    """Stage 1: pick which ~6 characters to generate for a show. One cheap call.
+
+    Returns a list of {"original_name", "display_name", "intro"}, deduped
+    against `same_show_names`/`other_show_names` and against name collisions
+    within the batch itself. Does NOT generate any card content — see
+    _generate_starter_card for stage 2.
+    """
+    show = (show or "").strip()
+    if not show:
+        raise ValueError("Show is required.")
+    same_names = [n.strip() for n in (same_show_names or []) if n.strip()]
+    other_names = [n.strip() for n in (other_show_names or []) if n.strip()]
+
+    prompt = f"Show: {show}"
+    if same_names:
+        prompt += (
+            "\n\nAlready used FOR THIS SHOW (do not re-pick the real character "
+            "behind any of these; they count toward the ~6 target):\n"
+            + ", ".join(same_names)
+        )
+    if other_names:
+        prompt += (
+            "\n\nAlready used by OTHER shows (avoid these exact names, but they "
+            "do not count toward this show's target):\n"
+            + ", ".join(other_names)
+        )
+
+    resp = _client.chat.completions.create(
+        model=config.API_MODEL,
+        max_tokens=1200,
+        temperature=0.9,
+        tools=[_CAST_SELECT_TOOL],
+        tool_choice={"type": "function", "function": {"name": "report_cast_selection"}},
+        messages=[
+            {"role": "system", "content": _CAST_SELECT_SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ],
+    )
+
+    raw_items: list = []
+    tool_calls = resp.choices[0].message.tool_calls or []
+    for call in tool_calls:
+        if call.function.name == "report_cast_selection":
+            raw_items = json.loads(call.function.arguments).get("characters") or []
+            break
+
+    used_norm = {_norm_name(n) for n in same_names + other_names}
+    result: list[dict] = []
+    for item in raw_items:
+        if not isinstance(item, dict):
+            continue  # malformed entry — skip it, keep the rest of the batch
+        display_name = str(item.get("display_name", "")).strip()
+        original_name = str(item.get("original_name", "")).strip()
+        intro = str(item.get("intro", "")).strip()
+        if not display_name or not intro:
+            continue
+        norm = _norm_name(display_name)
+        if not norm or norm in used_norm:
+            continue  # duplicate within this batch or against an existing name
+        if original_name and not _looks_renamed(original_name, display_name):
+            continue  # rename too close to (or a truncation of) the real name
+        used_norm.add(norm)
+        result.append({
+            "original_name": original_name,
+            "display_name": display_name,
+            "intro": intro,
+        })
+        if len(result) >= 8:
+            break  # hard cap regardless of what the model returned
+    return result
+
+
+def _generate_starter_card(show: str, original_name: str, display_name: str) -> dict:
+    """Stage 2, one character: generate just the starter card. Returns {} on
+    any parse failure — the caller drops that character rather than failing
+    the whole batch (see generate_cast_for_show)."""
+    prompt = (
+        f"Show: {show}\nCharacter (real name): {original_name}\n"
+        f"Parody rename already chosen: {display_name}"
+    )
+    resp = _client.chat.completions.create(
+        model=config.API_MODEL,
+        max_tokens=1200,
+        temperature=0.9,
+        tools=[_STARTER_CARD_TOOL],
+        tool_choice={"type": "function", "function": {"name": "report_starter_card"}},
+        messages=[
+            {"role": "system", "content": _STARTER_CARD_SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ],
+    )
+    tool_calls = resp.choices[0].message.tool_calls or []
+    for call in tool_calls:
+        if call.function.name == "report_starter_card":
+            return json.loads(call.function.arguments).get("card") or {}
+    return {}
 
 
 # Stella-r replies in tiny fragments, so she needs more turns to give the same
@@ -278,12 +591,15 @@ def generate_persona_for_show(show: str) -> dict:
 
 
 def generate_persona(show: str, character: str, note: str = "") -> dict:
-    """Generate the persona layer for a new character via the model.
+    """Generate a full card for a new character via the model.
 
-    Returns {"display_name", "intro", "persona"}. Applies the rename rules from
-    the prompt, then a backend check: if the rename looks too close to the
-    original, retry ONCE with a stronger instruction; accept the second result
-    either way so we never loop. Raises ValueError on empty inputs.
+    Returns {"display_name", "intro", "card", "persona"} — "persona" is
+    card flattened to the prompt text (via characters.flatten_card), so
+    callers that only want the flat string (the DB write, export.js) don't
+    need to know the card exists. Applies the rename rules from the prompt,
+    then a backend check: if the rename looks too close to the original, retry
+    ONCE with a stronger instruction; accept the second result either way so we
+    never loop. Raises ValueError on empty inputs.
     """
     show = (show or "").strip()
     character = (character or "").strip()
@@ -297,7 +613,7 @@ def generate_persona(show: str, character: str, note: str = "") -> dict:
     def _one_call(extra: str = "") -> dict:
         resp = _client.chat.completions.create(
             model=config.API_MODEL,
-            max_tokens=800,
+            max_tokens=1600,
             temperature=0.9,
             tools=[_PERSONA_TOOL],
             tool_choice={"type": "function", "function": {"name": "report_persona"}},
@@ -313,9 +629,9 @@ def generate_persona(show: str, character: str, note: str = "") -> dict:
                 return {
                     "display_name": str(inp.get("display_name", "")).strip(),
                     "intro": str(inp.get("intro", "")).strip(),
-                    "persona": str(inp.get("persona", "")).strip(),
+                    "card": inp.get("card") or {},
                 }
-        return {"display_name": "", "intro": "", "persona": ""}
+        return {"display_name": "", "intro": "", "card": {}}
 
     result = _one_call()
     if not _looks_renamed(character, result["display_name"]):
@@ -329,6 +645,9 @@ def generate_persona(show: str, character: str, note: str = "") -> dict:
         retry = _one_call(retry_note)
         if retry["display_name"]:
             result = retry
+    result["persona"] = characters.flatten_card(
+        result["display_name"] or character, result["card"]
+    )
     return result
 
 
@@ -337,84 +656,51 @@ def generate_cast_for_show(
     same_show_names: list[str] | None = None,
     other_show_names: list[str] | None = None,
 ) -> list[dict]:
-    """Generate a whole main-cast top-up for a show in ONE model call.
+    """Generate a whole main-cast top-up for a show.
 
     Used the first time a show is seen (or when it only has a handful of
     characters so far) so it gets a real cast to choose from instead of a
     single auto-picked character.
 
-    `same_show_names` are display_names already used FOR THIS SHOW — the model
-    must not re-pick the real character behind any of them, and they count
-    toward the ~6 target (so a show with 1 existing character gets ~5 more,
-    not 6 more). `other_show_names` are display_names used by OTHER shows —
-    pure collision-avoidance, must not be reused, but don't count toward this
-    show's target.
+    Two stages: select_cast_characters() (one cheap call) decides names, then
+    one starter-card call per selected character runs IN PARALLEL via a thread
+    pool — so wall-clock stays close to one character's generation time
+    regardless of how many characters get picked or how many fields the card
+    schema carries. This is what keeps this endpoint from creeping toward the
+    120s gunicorn worker timeout as the card schema grows.
 
-    Returns a list of {"display_name", "intro", "persona"} — degrades
-    gracefully: any item that's malformed, a name collision (within the batch
-    or against either name list), or a rename that's too close to the real
-    character (per the same rule generate_persona enforces) is dropped rather
-    than sinking the whole batch. Never retries — this is a single call.
+    `same_show_names` / `other_show_names` behave as before (see
+    select_cast_characters). Returns a list of {"display_name", "intro",
+    "card", "persona", "card_tier": "starter"} — degrades gracefully: any
+    character whose starter-card call fails or comes back malformed is
+    dropped rather than sinking the whole batch.
     """
-    show = (show or "").strip()
-    if not show:
-        raise ValueError("Show is required.")
-    same_names = [n.strip() for n in (same_show_names or []) if n.strip()]
-    other_names = [n.strip() for n in (other_show_names or []) if n.strip()]
+    selected = select_cast_characters(show, same_show_names, other_show_names)
+    if not selected:
+        return []
 
-    prompt = f"Show: {show}"
-    if same_names:
-        prompt += (
-            "\n\nAlready used FOR THIS SHOW (do not re-pick the real character "
-            "behind any of these; they count toward the ~6 target):\n"
-            + ", ".join(same_names)
-        )
-    if other_names:
-        prompt += (
-            "\n\nAlready used by OTHER shows (avoid these exact names, but they "
-            "do not count toward this show's target):\n"
-            + ", ".join(other_names)
-        )
+    def _build_one(item: dict) -> dict | None:
+        try:
+            card = _generate_starter_card(show, item["original_name"], item["display_name"])
+        except Exception:  # noqa: BLE001 — one bad call must not sink the batch
+            return None
+        if not card:
+            return None
+        return {
+            "display_name": item["display_name"],
+            "intro": item["intro"],
+            "card": card,
+            "persona": characters.flatten_card(item["display_name"], card),
+            "card_tier": "starter",
+        }
 
-    resp = _client.chat.completions.create(
-        model=config.API_MODEL,
-        max_tokens=3000,
-        temperature=0.9,
-        tools=[_CAST_TOOL],
-        tool_choice={"type": "function", "function": {"name": "report_cast"}},
-        messages=[
-            {"role": "system", "content": _CAST_SYSTEM_PROMPT},
-            {"role": "user", "content": prompt},
-        ],
-    )
-
-    raw_items: list = []
-    tool_calls = resp.choices[0].message.tool_calls or []
-    for call in tool_calls:
-        if call.function.name == "report_cast":
-            raw_items = json.loads(call.function.arguments).get("characters") or []
-            break
-
-    used_norm = {_norm_name(n) for n in same_names + other_names}
     result: list[dict] = []
-    for item in raw_items:
-        if not isinstance(item, dict):
-            continue  # malformed entry — skip it, keep the rest of the batch
-        display_name = str(item.get("display_name", "")).strip()
-        original_name = str(item.get("original_name", "")).strip()
-        intro = str(item.get("intro", "")).strip()
-        persona = str(item.get("persona", "")).strip()
-        if not display_name or not intro or not persona:
-            continue
-        norm = _norm_name(display_name)
-        if not norm or norm in used_norm:
-            continue  # duplicate within this batch or against an existing name
-        if original_name and not _looks_renamed(original_name, display_name):
-            continue  # rename too close to (or a truncation of) the real name
-        used_norm.add(norm)
-        result.append({"display_name": display_name, "intro": intro, "persona": persona})
-        if len(result) >= 8:
-            break  # hard cap regardless of what the model returned
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers=min(_MAX_PARALLEL_WORKERS, len(selected))
+    ) as pool:
+        for built in pool.map(_build_one, selected):
+            if built is not None:
+                result.append(built)
     return result
 
 
@@ -431,37 +717,181 @@ def _system_prompt(persona: str, targets: list[str]) -> str:
     return persona + "\n\n" + _TEACHING_TEMPLATE.format(targets=tlist)
 
 
+# --- lazy card completion ----------------------------------------------------
+# A "starter" card (see chat.py module docstring) has only 1-2 signature_moves
+# and 1 opening_variant. The first time that character is actually picked for a
+# chat, top it up to "full" (3-5 moves, 2-3 openings) with one more model call,
+# then persist it so every later session with this character reuses the full
+# card for free. "legacy" characters (no card_json at all) and already-"full"
+# ones are untouched.
+_COMPLETE_CARD_SYSTEM_PROMPT = f"""\
+You are expanding an EXISTING starter roleplay card for a character from a
+show into a fuller one, for an English-conversation practice app. You will be
+given the starter card as-is — keep voice/format_style/relationship_style/
+avoid as they are unless you spot a real problem, but:
+- Expand signature_moves to 3-5 TOTAL (keep the existing one(s), add more).
+- Expand opening_variants to 2-3 TOTAL (keep the existing one, add more).
+
+{_CARD_HARD_RULES}
+
+Return the COMPLETE card (every field, not just the new parts) by calling
+`report_full_card`.
+"""
+
+_COMPLETE_CARD_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "report_full_card",
+        "description": "Report the expanded, fuller card for this character.",
+        "parameters": {
+            "type": "object",
+            "properties": {"card": {
+                "type": "object",
+                "properties": _CARD_SCHEMA_PROPERTIES,
+                "required": list(_CARD_SCHEMA_PROPERTIES.keys()),
+            }},
+            "required": ["card"],
+        },
+    },
+}
+
+
+def _complete_card(show: str, display_name: str, starter_card: dict) -> dict:
+    """One call: expand a starter card to full. Returns {} on parse failure."""
+    prompt = (
+        f"Show: {show}\nCharacter: {display_name}\n\n"
+        f"Starter card so far:\n{json.dumps(starter_card, ensure_ascii=False, indent=2)}"
+    )
+    resp = _client.chat.completions.create(
+        model=config.API_MODEL,
+        max_tokens=1800,
+        temperature=0.9,
+        tools=[_COMPLETE_CARD_TOOL],
+        tool_choice={"type": "function", "function": {"name": "report_full_card"}},
+        messages=[
+            {"role": "system", "content": _COMPLETE_CARD_SYSTEM_PROMPT},
+            {"role": "user", "content": prompt},
+        ],
+    )
+    tool_calls = resp.choices[0].message.tool_calls or []
+    for call in tool_calls:
+        if call.function.name == "report_full_card":
+            return json.loads(call.function.arguments).get("card") or {}
+    return {}
+
+
+def _ensure_full_card(char: dict) -> dict:
+    """Top up `char` to a "full" card if it's currently "starter". Best-effort:
+    on any failure, returns `char` unchanged (chat proceeds on the starter card
+    rather than blocking on a retry)."""
+    if char.get("card_tier") != "starter" or not char.get("card"):
+        return char
+    try:
+        completed = _complete_card(char["source_show"], char["name"], char["card"])
+    except Exception:  # noqa: BLE001 — best-effort, fall back to the starter card
+        return char
+    if not completed:
+        return char
+    persona = characters.flatten_card(char["name"], completed)
+    updated = characters.update_card(char["key"], completed, "full", persona)
+    return updated or char
+
+
+# --- signature-move / opening-variant rotation -------------------------------
+# "选择角色 → 读取角色卡 → 挑选本次尚未使用的1~2个特征" — each model call that
+# produces an in-character reply gets a fresh nudge toward 1-2 signature_moves
+# the session hasn't leaned on yet, so a single move doesn't repeat every turn.
+# No-op for legacy/cardless characters (nothing to rotate through).
+_MOVES_PER_TURN = 2
+
+
+def _pick_unused_moves(card: dict | None, used_names: set[str]) -> list[dict]:
+    moves = (card or {}).get("signature_moves") or []
+    if not moves:
+        return []
+    unused = [m for m in moves if m.get("name") not in used_names]
+    if not unused:
+        used_names.clear()  # everything's been used at least once — start a new lap
+        unused = moves
+    pool = unused[:]
+    random.shuffle(pool)
+    picked = pool[:_MOVES_PER_TURN]
+    for m in picked:
+        used_names.add(m.get("name", ""))
+    return picked
+
+
+def _feature_injection(card: dict | None, used_names: set[str]) -> str:
+    """A short addendum to the system prompt nudging THIS reply toward 1-2
+    not-yet-used signature moves. Empty string if the card has none."""
+    picked = _pick_unused_moves(card, used_names)
+    if not picked:
+        return ""
+    lines = [
+        "\n\nFor THIS reply, if it fits naturally, lean into one of these "
+        "signature moves (skip it if the moment genuinely doesn't call for it):"
+    ]
+    for m in picked:
+        steps = " then ".join(m.get("steps") or [])
+        lines.append(f"- {m.get('name', '')}: {steps}")
+    return "\n".join(lines)
+
+
+def _kickoff_instruction(card: dict | None) -> str:
+    base = (
+        "Start the conversation now. In character, greet the learner and set up a "
+        "casual little scenario that gives them a natural opening to use one of the "
+        "target expressions. Do not mention the expressions or that this is a test."
+    )
+    openings = (card or {}).get("opening_variants") or []
+    if openings:
+        base += (
+            "\n\nFor how you kick things off, take inspiration from this in-character "
+            "opening move (adapt it to the moment, don't recite it verbatim): "
+            + random.choice(openings)
+        )
+    return base
+
+
+def _join_reply_text(messages: list[dict]) -> str:
+    """Flatten a structured reply into plain text for the conversation history
+    the model itself sees on later turns (the frontend gets the structured
+    version; the model's own context doesn't need pause timing)."""
+    return " ".join(m["text"] for m in messages if m.get("text"))
+
+
 def start_session(character_key: str, expressions: list[str]) -> dict:
     """Create a session, choose target expressions, and get the opening line."""
     char = characters.get(character_key)
     if not char:
         raise ValueError(f"Unknown character: {character_key!r}")
+    char = _ensure_full_card(char)
 
     targets = _pick_targets(expressions)
     session_id = uuid.uuid4().hex
     system = _system_prompt(char["persona"], targets)
+    card = char.get("card")
+    used_moves: set[str] = set()
 
-    kickoff = (
-        "Start the conversation now. In character, greet the learner and set up a "
-        "casual little scenario that gives them a natural opening to use one of the "
-        "target expressions. Do not mention the expressions or that this is a test."
-    )
-    reply = _call_model(system, [{"role": "user", "content": kickoff}], char)
+    kickoff = _kickoff_instruction(card) + _feature_injection(card, used_moves)
+    messages = _call_model_reply(system, [{"role": "user", "content": kickoff}])
 
     _sessions[session_id] = {
         "character": character_key,
         "char_name": char["name"],
         "system": system,
+        "card": card,
+        "used_moves": used_moves,
         "targets": targets,
         # Full turn history (user/assistant). The kickoff instruction is not
         # stored so it doesn't leak into later context.
-        "history": [{"role": "assistant", "content": reply}],
+        "history": [{"role": "assistant", "content": _join_reply_text(messages)}],
     }
     return {
         "session_id": session_id,
         "character": character_key,
         "targets": targets,
-        "reply": reply,
+        "messages": messages,
     }
 
 
@@ -471,12 +901,13 @@ def turn(session_id: str, message: str) -> dict:
         raise KeyError("Session not found or expired.")
 
     sess["history"].append({"role": "user", "content": message})
-    reply = _call_model(sess["system"], sess["history"], char=None)
-    sess["history"].append({"role": "assistant", "content": reply})
+    system = sess["system"] + _feature_injection(sess["card"], sess["used_moves"])
+    messages = _call_model_reply(system, sess["history"])
+    sess["history"].append({"role": "assistant", "content": _join_reply_text(messages)})
 
     user_turns = sum(1 for m in sess["history"] if m["role"] == "user")
     limit = _STELLA_TARGET_TURNS if sess["character"] == "stella" else _DEFAULT_TARGET_TURNS
-    return {"reply": reply, "user_turns": user_turns, "suggest_end": user_turns >= limit}
+    return {"messages": messages, "user_turns": user_turns, "suggest_end": user_turns >= limit}
 
 
 def _used_targets(history: list[dict], targets: list[str]) -> dict[str, bool]:
@@ -568,3 +999,93 @@ def _call_model(system: str, messages: list[dict], char: dict | None) -> str:
         messages=[{"role": "system", "content": system}, *messages],
     )
     return (resp.choices[0].message.content or "").strip()
+
+
+# In-character replies are forced through this tool so the frontend gets a
+# proper message SEQUENCE (bubbles + pauses) instead of one blob of text with
+# markdown the frontend has to interpret. `pause_before_ms` is optional and
+# defaults to 0 (no beat before that bubble) — most replies are a single
+# message with no pause; multi-message replies (a quick line, a beat, then the
+# punchline) are for when the character's format_style/signature_move calls
+# for it, not a mandatory pattern every reply must use.
+_REPLY_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "report_reply",
+        "description": "Report your in-character reply as an ordered message sequence.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "messages": {
+                    "type": "array",
+                    "minItems": 1,
+                    "description": "1-3 messages, in the order they should appear. "
+                    "Usually just 1 — use more only when a beat/pause is actually "
+                    "part of how this character talks.",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "text": {
+                                "type": "string",
+                                "description": "The message text. May use **bold** "
+                                "for emphasis if that fits the character's "
+                                "format_style — no other markup.",
+                            },
+                            "pause_before_ms": {
+                                "type": "integer",
+                                "description": "Milliseconds to pause before showing "
+                                "this message (0 for the first message, or for any "
+                                "message with no dramatic beat before it).",
+                            },
+                        },
+                        "required": ["text"],
+                    },
+                },
+            },
+            "required": ["messages"],
+        },
+    },
+}
+
+
+def _call_model_reply(system: str, messages: list[dict]) -> list[dict]:
+    """One model call for an in-character turn. Returns the frontend-facing
+    message list: [{"text": str, "pause_before_ms": int}, ...]. Falls back to
+    a single plain-text message if the tool call is missing/malformed, so a
+    parsing hiccup degrades to today's single-bubble behavior rather than
+    breaking the turn.
+    """
+    resp = _client.chat.completions.create(
+        model=config.API_MODEL,
+        max_tokens=700,
+        temperature=0.9,
+        tools=[_REPLY_TOOL],
+        tool_choice={"type": "function", "function": {"name": "report_reply"}},
+        messages=[{"role": "system", "content": system}, *messages],
+    )
+    tool_calls = resp.choices[0].message.tool_calls or []
+    for call in tool_calls:
+        if call.function.name == "report_reply":
+            try:
+                raw = json.loads(call.function.arguments).get("messages") or []
+            except (json.JSONDecodeError, AttributeError):
+                break
+            out = []
+            for item in raw:
+                if not isinstance(item, dict):
+                    continue
+                text = str(item.get("text", "")).strip()
+                if not text:
+                    continue
+                pause = item.get("pause_before_ms") or 0
+                try:
+                    pause = max(0, int(pause))
+                except (TypeError, ValueError):
+                    pause = 0
+                out.append({"text": text, "pause_before_ms": pause})
+            if out:
+                return out
+    fallback = (resp.choices[0].message.content or "").strip()
+    return [{"text": fallback, "pause_before_ms": 0}] if fallback else [
+        {"text": "...", "pause_before_ms": 0}
+    ]

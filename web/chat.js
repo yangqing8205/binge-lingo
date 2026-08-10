@@ -235,13 +235,47 @@ async function deleteCharacter(c) {
   }
 }
 
+// Renders text as safe HTML: escape everything first, then re-enable ONLY
+// **bold** (the one markup characters are allowed to use per format_style).
+// Never build this from raw string concatenation of untrusted input — esc()
+// runs first, so anything the model wrote lands as inert text, and only the
+// **...** delimiters we insert ourselves become <strong> tags.
+function formatBubbleHtml(text) {
+  return esc(text).replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>");
+}
+
 function bubble(role, text) {
   const b = document.createElement("div");
   b.className = "bubble " + (role === "ai" ? "ai" : "me");
-  b.textContent = text;
+  if (role === "ai") {
+    b.innerHTML = formatBubbleHtml(text);
+  } else {
+    b.textContent = text; // learner's own input is never treated as markup
+  }
   chatEl.log.appendChild(b);
   chatEl.log.scrollTop = chatEl.log.scrollHeight;
   return b;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Renders an ordered [{text, pause_before_ms}] reply as separate AI bubbles,
+// pausing before each one that asks for it. Caps the pause so a bad/huge
+// value from the model can't stall the UI for an absurd amount of time.
+const MAX_PAUSE_MS = 3000;
+
+async function showReplyMessages(messages) {
+  for (const m of messages || []) {
+    const pause = Math.min(Math.max(0, Number(m.pause_before_ms) || 0), MAX_PAUSE_MS);
+    if (pause > 0) {
+      const t = typingBubble();
+      await sleep(pause);
+      t.remove();
+    }
+    bubble("ai", m.text || "");
+  }
 }
 
 function typingBubble() {
@@ -294,7 +328,7 @@ async function startChat(c) {
     }
     chat.session = { id: data.session_id, character: c.key, color: c.color, name: c.name, targets: data.targets };
     renderTargets();
-    bubble("ai", data.reply);
+    await showReplyMessages(data.messages);
     chatEl.input.focus();
   } catch (err) {
     t.remove();
@@ -321,7 +355,7 @@ async function sendChat() {
       bubble("ai", "出错了：" + (data.error || "未知错误"));
       return;
     }
-    bubble("ai", data.reply);
+    await showReplyMessages(data.messages);
     markUsedTargets();
     if (data.suggest_end) {
       const hint = document.createElement("div");
