@@ -8,6 +8,7 @@ __pycache__/
 .venv/
 venv/
 env/
+.worktrees/
 
 # Screenshots captured at runtime
 screenshots/*

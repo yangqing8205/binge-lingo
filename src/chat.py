@@ -1,13 +1,10 @@
-"""Roleplay conversation practice — the "对话练习" mode.
+"""Scene Talk roleplay practice and AI-generated character personas.
 
-The learner picks one of ten characters; the model stays in that character's
-voice and naturally steers the chat so the learner gets openings to USE a few of
-their saved expressions (rather than just recognizing them). At the end the model
-drops character and grades which target expressions actually came out.
-
-Sessions live in a plain in-memory dict — this is a single-user local tool, so no
-database. Everything model-facing reuses the same OpenAI-compatible client and
-config as vision.py.
+The learner selects a character and practises saved expressions through a short
+conversation. Character records live in SQLite, while active chat sessions are
+process-local and therefore require a single Gunicorn worker in the current MVP.
+All model calls reuse the OpenAI-compatible client and configuration from the
+capture pipeline.
 
 Character generation produces a structured CARD (see characters.py's module
 docstring for the schema) rather than a flat persona string. Cast generation for
@@ -21,6 +18,8 @@ Each character's card starts "starter" (1-2 signature_moves, 1 opening_variant)
 and is topped up to "full" lazily, the first time it's actually selected for a
 chat (see _ensure_full_card, called from start_session) — spreading that cost
 across first-uses instead of paying it for every character up front.
+All card-generation calls disable Ark's extended thinking (_NO_THINKING) — it
+adds real latency and buys nothing for structured tool-call output.
 """
 from __future__ import annotations
 
@@ -33,7 +32,16 @@ from openai import OpenAI
 
 from . import characters, config, matching
 
-_client = OpenAI(base_url=config.API_BASE_URL, api_key=config.API_KEY)
+_client = OpenAI(
+    base_url=config.API_BASE_URL,
+    api_key=config.API_KEY,
+    timeout=90.0,
+    max_retries=0,
+)
+
+_NO_THINKING = {"thinking": {"type": "disabled"}}
+
+_NO_THINKING = {"thinking": {"type": "disabled"}}
 
 # Cap on parallel fanout calls for cast generation — bounds concurrent load on
 # the gateway regardless of how many characters get selected (max 8, see
@@ -445,6 +453,7 @@ def select_cast_characters(
         model=config.API_MODEL,
         max_tokens=1200,
         temperature=0.9,
+        extra_body=_NO_THINKING,
         tools=[_CAST_SELECT_TOOL],
         tool_choice={"type": "function", "function": {"name": "report_cast_selection"}},
         messages=[
@@ -498,6 +507,7 @@ def _generate_starter_card(show: str, original_name: str, display_name: str) -> 
         model=config.API_MODEL,
         max_tokens=1200,
         temperature=0.9,
+        extra_body=_NO_THINKING,
         tools=[_STARTER_CARD_TOOL],
         tool_choice={"type": "function", "function": {"name": "report_starter_card"}},
         messages=[
@@ -615,6 +625,7 @@ def generate_persona(show: str, character: str, note: str = "") -> dict:
             model=config.API_MODEL,
             max_tokens=1600,
             temperature=0.9,
+            extra_body=_NO_THINKING,
             tools=[_PERSONA_TOOL],
             tool_choice={"type": "function", "function": {"name": "report_persona"}},
             messages=[
@@ -655,6 +666,7 @@ def generate_cast_for_show(
     show: str,
     same_show_names: list[str] | None = None,
     other_show_names: list[str] | None = None,
+    requested_count: int = 3,
 ) -> list[dict]:
     """Generate a whole main-cast top-up for a show.
 
@@ -766,6 +778,7 @@ def _complete_card(show: str, display_name: str, starter_card: dict) -> dict:
         model=config.API_MODEL,
         max_tokens=1800,
         temperature=0.9,
+        extra_body=_NO_THINKING,
         tools=[_COMPLETE_CARD_TOOL],
         tool_choice={"type": "function", "function": {"name": "report_full_card"}},
         messages=[
@@ -996,6 +1009,7 @@ def _call_model(system: str, messages: list[dict], char: dict | None) -> str:
         model=config.API_MODEL,
         max_tokens=600,
         temperature=0.9,
+        extra_body=_NO_THINKING,
         messages=[{"role": "system", "content": system}, *messages],
     )
     return (resp.choices[0].message.content or "").strip()
@@ -1059,6 +1073,7 @@ def _call_model_reply(system: str, messages: list[dict]) -> list[dict]:
         model=config.API_MODEL,
         max_tokens=700,
         temperature=0.9,
+        extra_body=_NO_THINKING,
         tools=[_REPLY_TOOL],
         tool_choice={"type": "function", "function": {"name": "report_reply"}},
         messages=[{"role": "system", "content": system}, *messages],

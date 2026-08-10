@@ -25,7 +25,7 @@ def _require(name: str) -> str:
 # --- LLM (OpenAI-compatible) ---
 API_BASE_URL = _require("API_BASE_URL")
 API_KEY = _require("API_KEY")
-API_MODEL = os.getenv("API_MODEL", "anthropic/claude-sonnet-4-20250514").strip()
+API_MODEL = _require("API_MODEL")
 
 # --- Notion ---
 NOTION_TOKEN = _require("NOTION_TOKEN")

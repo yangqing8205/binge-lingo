@@ -1,52 +1,43 @@
-# BingeLingo — Roadmap / TODO
+# BingeLingo Roadmap
 
-接下来要完善的功能，按优先级排列。方便开新对话直接从这里接着做。
+BingeLingo is a personal MVP. The complete capture → review → speaking-practice
+loop is working; the items below are the next improvements rather than missing
+claims about already-shipped features.
 
-## ~~1. 提取质量~~（已完成 2026-07-23）
+## Next priorities
 
-已把 `src/vision.py` 的 prompt 筛选标准改成：
+1. **持久化存储 (Persistent deployment storage)**
+   - Move characters, review logs, and app settings from ephemeral local SQLite
+     files to durable storage, or attach a persistent disk.
+   - Persist Scene Talk sessions so they survive process restarts and can support
+     more than one Gunicorn worker.
 
-> 只提取中低频（mid-to-low frequency）、有实际语义的地道表达——包括 idioms、
-> phrasal verbs、collocations、slang。排除所有高频词、功能词、感叹词和填充词
-> （如 huh、oh、um、well、you know）。判断标准：一个受过良好教育的英语学习者
-> 是否"看得懂但自己主动表达时想不到用它"。
+2. **间隔重复调度 (True spaced-repetition scheduling)**
+   - Use the existing review-attempt history to select due expressions.
+   - Add interval and mastery fields instead of treating the log as recording only.
 
-同时放宽了"每张必出一条"的硬规则：宁可返回空也不用填充词凑数
-（`watcher.py` 已能优雅跳过空结果）。
+3. **Current-show consistency**
+   - Restrict Scene Talk target-expression selection to the active show instead
+     of reading expressions from every Notion card.
 
-**验收案例已通过：**
-- 字幕 `"Oh, she's a bummer, huh?"` → 实测只提取 `bummer`，未提取 `huh?`。✓
+4. **Voice practice**
+   - Add optional speech input, TTS, and pronunciation feedback after the text
+     interaction is stable.
 
-## 2. 复习闭环（第二期核心）
+5. **Multi-user readiness**
+   - Replace the shared-password gate with account isolation only if the product
+     grows beyond a personal demo or small seed-user test.
 
-**已完成 v1（网页版复习卡片，2026-07-23）：**
-- 本地 Flask 网页（`python review.py` → http://127.0.0.1:5001），实时从
-  Notion 读数据，token/代理留在服务端，浏览器只拿扁平化的卡片 JSON。
-- 三种模式可切换：挖空猜词（主打）/ 中译英 / 英译中。
-- 翻卡（上一张 / 下一张 + 计数）、揭晓、键盘快捷键（← → / 空格）。
-- 挖空容错：台词里找不到目标表达时，该卡自动退化成中译英，不报错不空白。
-- 剧照从每条记录页面正文的 image block 里取出显示。
+6. **Reliability and observability**
+   - Expand automated coverage for the watcher, Notion mapping, and review flow.
+   - Add structured production logging and clearer health checks.
 
-**还没做（留到后续）：**
-- 导出 Anki 卡片，用间隔重复（SRS）对抗遗忘。
-- 复习进度 / 熟练度记录，优先复习不熟的卡。
-- TTS 发音、AI 对话、游戏化（明确留到更后面）。
+## Completed product loop
 
-## 3. 产品健壮性
-
-- 失败重试、日志、错误提示。
-
-## 4. 离职迁移（重要）
-
-- 当前用公司网关 `model.zhenguanyu.com`，离职后 `sk-mg` key 会失效。
-- 试通非公司模型供应商（如通义千问 VL，国内直连），确认可行。
-- 代码已配置外置：只需改 `.env` 的 `API_BASE_URL` 和 `API_KEY`，无需改代码。
-
----
-
-## 已完成（第一期 MVP）
-
-- 快捷键 `Ctrl+Shift+L` 截图 → 多模态模型提取地道表达 → 写入 Notion
-  （配图 / 释义 / 语境 / 例句）。
-- 隐私可控，不常驻后台（手动启动 / 停止）。
-- 已推送 github.com/yangqing8205/binge-lingo。
+- Screenshot-folder monitoring and multimodal expression extraction.
+- Structured Notion storage with the original screenshot as evidence.
+- Show and episode organization.
+- Three-layer contextual Revision with attempt history.
+- Scene Talk character generation and roleplay practice.
+- Practice to Go prompt export for external AI chat tools.
+- Shared-password access control and Render deployment.

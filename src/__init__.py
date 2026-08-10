@@ -1,1 +1,1 @@
-"""BingeLingo — turn TV/film screenshots into English-learning Notion entries."""
+"""BingeLingo — capture, review, and practise English expressions from TV."""

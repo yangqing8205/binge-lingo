@@ -1,9 +1,8 @@
-"""BingeLingo reviewer — a tiny local web app for reviewing your saved cards.
+"""BingeLingo Flask application for Revision, Scene Talk, and Practice to Go.
 
-    python review.py            # then open http://127.0.0.1:5001
-
-The Notion token and proxy stay server-side; the browser only ever sees the
-already-flattened card JSON from /api/cards.
+Run locally with `python review.py`, or deploy the `app` object through Gunicorn.
+Notion credentials and model API keys stay server-side; browsers receive only
+the application data returned by authenticated API routes.
 """
 from __future__ import annotations
 
@@ -19,6 +18,7 @@ from flask import (
     send_from_directory,
     session,
 )
+from openai import APITimeoutError
 
 from src import characters, chat, config, matching, notion_reader, review_log, settings
 
@@ -38,12 +38,18 @@ app = Flask(__name__, static_folder=WEB_DIR, static_url_path="")
 PORT = 5001
 
 # ---- simple password gate ----
-# Single shared password; no accounts. Set APP_PASSWORD in the environment on
-# deploy; falls back to the baked-in default for local use.
-APP_PASSWORD = os.getenv("APP_PASSWORD", "9713.jiayouYQ")
-# Signs the session cookie. Set SECRET_KEY on Render so logins survive restarts
-# and are consistent across workers; otherwise a random per-process key is used.
-app.secret_key = os.getenv("SECRET_KEY", secrets.token_hex(32))
+# Single shared password; no accounts. This must be configured explicitly so a
+# deployed copy can never fall back to a password published in source control.
+APP_PASSWORD = os.getenv("APP_PASSWORD", "").strip()
+if not APP_PASSWORD:
+    raise RuntimeError(
+        "Missing required environment variable 'APP_PASSWORD'. "
+        "Set it in .env for local use or in the deployment environment."
+    )
+
+# Signs the session cookie. Render supplies a stable generated value; local
+# development may use SECRET_KEY from .env or a process-local random fallback.
+app.secret_key = os.getenv("SECRET_KEY", "").strip() or secrets.token_hex(32)
 # Endpoints reachable without a valid session.
 _PUBLIC_PATHS = {"/login", "/favicon.ico"}
 
@@ -291,7 +297,7 @@ def api_characters_create():
     return jsonify({"ok": True, "character": created})
 
 
-_CAST_TARGET = 6  # roughly this many main characters per show, cap 8 (see chat.py)
+_CAST_TARGET = 6  # eventual cast size per show
 
 
 @app.post("/api/characters/for-show")
@@ -300,9 +306,10 @@ def api_characters_for_show():
 
     Idempotent per show: if the show already has >= _CAST_TARGET characters,
     this is a no-op that just returns them. Otherwise it generates enough new
-    ones, in one model call, to bring the show's cast up toward that target —
-    any characters the show already has (e.g. a single manually-added one)
-    count toward the target rather than being duplicated.
+    ones to bring the show's cast up toward that target — any characters the
+    show already has (e.g. a single manually-added one) count toward the
+    target rather than being duplicated. See chat.generate_cast_for_show for
+    how this stays inside the request timeout despite generating a whole cast.
     """
     data = request.get_json(silent=True) or {}
     show = characters.show_from_source(str(data.get("show", "")))
@@ -318,6 +325,10 @@ def api_characters_for_show():
     log.info("for-show: generating cast top-up for show=%r (%d existing)",
              show, len(existing))
     try:
+        # generate_cast_for_show stays inside the 120s worker timeout even for
+        # a full ~6-character cast: stage 1 picks names in one cheap call,
+        # then stage 2 fans starter-card generation out across a thread pool
+        # so wall-clock is ~one character's worth of work, not N times that.
         existing_keys = {c["key"] for c in existing}
         same_names = [c["name"] for c in existing]
         other_names = [c["name"] for c in characters.list_characters()
@@ -338,6 +349,9 @@ def api_characters_for_show():
     except ValueError as exc:
         log.warning("for-show: bad input for show=%r: %s", show, exc)
         return jsonify({"ok": False, "error": str(exc)}), 400
+    except APITimeoutError:
+        log.warning("for-show: Ark timed out for show=%r", show)
+        return jsonify({"ok": False, "error": "角色生成超时，请稍后重试。"}), 504
     except Exception as exc:  # noqa: BLE001 — surface to the UI as JSON
         # Full traceback to the deploy log so silent generation failures (gateway
         # errors, tool-call parsing, DB writes) are diagnosable.
@@ -395,38 +409,6 @@ def api_chat_end():
     except Exception as exc:  # noqa: BLE001
         return jsonify({"ok": False, "error": str(exc)}), 502
     return jsonify({"ok": True, **result})
-
-
-@app.get("/api/debug/ark-key")
-def api_debug_ark_key():
-    """TEMPORARY diagnostic — delete once the Render/Ark 401 is root-caused.
-
-    Reports what this process actually read from the environment for the Ark
-    credentials. Reads os.environ directly (not src.config, which .strip()s
-    values) so a stray leading/trailing space, quote, or newline picked up
-    from the Render dashboard shows up instead of being silently cleaned.
-    Not linked from any page; still sits behind the same login gate as the
-    rest of /api/* (see require_login above), so it isn't publicly reachable.
-    """
-    raw_key = os.environ.get("API_KEY", "")
-    raw_base = os.environ.get("API_BASE_URL", "")
-    raw_model = os.environ.get("API_MODEL", "")
-
-    def _edge_repr(s: str, n: int = 6) -> dict:
-        return {"first": repr(s[:n]), "last": repr(s[-n:]) if len(s) > n else ""}
-
-    return jsonify({
-        "ok": True,
-        "api_key": {"length": len(raw_key), **_edge_repr(raw_key)},
-        "api_base_url": {"value": raw_base, "repr": repr(raw_base)},
-        "api_model": {"value": raw_model, "repr": repr(raw_model)},
-        # Sanity check in case the wrong variable names were filled in on Render.
-        "unexpected_ark_prefixed_vars_present": {
-            "ARK_API_KEY": "ARK_API_KEY" in os.environ,
-            "ARK_BASE_URL": "ARK_BASE_URL" in os.environ,
-            "ARK_MODEL": "ARK_MODEL" in os.environ,
-        },
-    })
 
 
 def main() -> None:
