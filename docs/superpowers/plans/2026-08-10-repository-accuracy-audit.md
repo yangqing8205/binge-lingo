@@ -15,7 +15,7 @@
 **Files:**
 - No tracked files modified.
 
-- [ ] **Step 1: Create and populate a local virtual environment**
+- [x] **Step 1: Create and populate a local virtual environment**
 
 Run:
 
@@ -26,7 +26,7 @@ python3 -m venv .venv
 
 Expected: all dependencies, including Flask and the OpenAI SDK, install successfully inside `.venv`.
 
-- [ ] **Step 2: Run the current Python tests**
+- [x] **Step 2: Run the current Python tests**
 
 Run:
 
@@ -43,7 +43,7 @@ SECRET_KEY=test-secret \
 
 Expected: the existing Python tests pass before tracked implementation changes begin.
 
-- [ ] **Step 3: Run the current JavaScript tests**
+- [x] **Step 3: Run the current JavaScript tests**
 
 Run:
 
@@ -62,7 +62,7 @@ Expected: 4 tests pass and 0 fail.
 - Modify: `src/config.py`
 - Modify: `review.py`
 
-- [ ] **Step 1: Add failing configuration-contract tests**
+- [x] **Step 1: Add failing configuration-contract tests**
 
 Create `tests/test_configuration_contract.py` with:
 
@@ -124,7 +124,7 @@ if __name__ == "__main__":
     unittest.main()
 ```
 
-- [ ] **Step 2: Run the new tests and confirm the old fallbacks fail the contract**
+- [x] **Step 2: Run the new tests and confirm the old fallbacks fail the contract**
 
 Run:
 
@@ -134,7 +134,7 @@ Run:
 
 Expected: both tests fail because `API_MODEL` and `APP_PASSWORD` currently have fallback values.
 
-- [ ] **Step 3: Make `API_MODEL` required**
+- [x] **Step 3: Make `API_MODEL` required**
 
 In `src/config.py`, replace:
 
@@ -148,7 +148,7 @@ with:
 API_MODEL = _require("API_MODEL")
 ```
 
-- [ ] **Step 4: Remove the public fallback password**
+- [x] **Step 4: Remove the public fallback password**
 
 In `review.py`, replace the existing password block with:
 
@@ -167,7 +167,7 @@ if not APP_PASSWORD:
 app.secret_key = os.getenv("SECRET_KEY", "").strip() or secrets.token_hex(32)
 ```
 
-- [ ] **Step 5: Run configuration and application tests**
+- [x] **Step 5: Run configuration and application tests**
 
 Run:
 
@@ -186,7 +186,7 @@ SECRET_KEY=test-secret \
 
 Expected: all tests pass.
 
-- [ ] **Step 6: Commit the configuration contract**
+- [x] **Step 6: Commit the configuration contract**
 
 ```bash
 git add tests/test_configuration_contract.py src/config.py review.py
@@ -202,7 +202,7 @@ git commit -m "fix: require explicit model and app password"
 - Modify: `render.yaml`
 - Modify: `Procfile`
 
-- [ ] **Step 1: Add failing deployment-consistency tests**
+- [x] **Step 1: Add failing deployment-consistency tests**
 
 Create `tests/test_repository_accuracy.py` with:
 
@@ -232,7 +232,7 @@ if __name__ == "__main__":
     unittest.main()
 ```
 
-- [ ] **Step 2: Run the deployment test and verify it fails**
+- [x] **Step 2: Run the deployment test and verify it fails**
 
 Run:
 
@@ -242,7 +242,7 @@ Run:
 
 Expected: failure showing both deployment files still specify two workers.
 
-- [ ] **Step 3: Change both deployment entry points to one worker**
+- [x] **Step 3: Change both deployment entry points to one worker**
 
 Use this exact command in `render.yaml`:
 
@@ -258,7 +258,7 @@ web: gunicorn review:app --bind 0.0.0.0:$PORT --workers 1 --timeout 120
 
 Update the nearby `render.yaml` comment to explain that one worker is required while Scene Talk sessions remain process-local.
 
-- [ ] **Step 4: Run the deployment test and full Python tests**
+- [x] **Step 4: Run the deployment test and full Python tests**
 
 Run:
 
@@ -277,7 +277,7 @@ SECRET_KEY=test-secret \
 
 Expected: all tests pass.
 
-- [ ] **Step 5: Commit the deployment fix**
+- [x] **Step 5: Commit the deployment fix**
 
 ```bash
 git add tests/test_repository_accuracy.py render.yaml Procfile
@@ -297,7 +297,7 @@ git commit -m "fix: keep Scene Talk sessions on one worker"
 - Create: `LICENSE`
 - Modify: `tests/test_repository_accuracy.py`
 
-- [ ] **Step 1: Extend repository tests for public configuration and metadata**
+- [x] **Step 1: Extend repository tests for public configuration and metadata**
 
 Add these methods to `RepositoryAccuracyTests`:
 
@@ -327,7 +327,7 @@ Add these methods to `RepositoryAccuracyTests`:
         self.assertIn("Permission is hereby granted", text)
 ```
 
-- [ ] **Step 2: Run the expanded tests and verify they fail**
+- [x] **Step 2: Run the expanded tests and verify they fail**
 
 Run:
 
@@ -337,7 +337,7 @@ Run:
 
 Expected: failures for the obsolete environment template, obsolete roadmap, and missing license.
 
-- [ ] **Step 3: Replace `.env.example` with accurate safe placeholders**
+- [x] **Step 3: Replace `.env.example` with accurate safe placeholders**
 
 Use:
 
@@ -371,7 +371,7 @@ IMGUR_CLIENT_ID=
 HTTPS_PROXY=
 ```
 
-- [ ] **Step 4: Replace `TODO.md` with the current roadmap**
+- [x] **Step 4: Replace `TODO.md` with the current roadmap**
 
 Use:
 
@@ -421,7 +421,7 @@ claims about already-shipped features.
 - Shared-password access control and Render deployment.
 ```
 
-- [ ] **Step 5: Correct stale module descriptions**
+- [x] **Step 5: Correct stale module descriptions**
 
 Set `src/__init__.py` to:
 
@@ -453,7 +453,7 @@ the application data returned by authenticated API routes.
 """
 ```
 
-- [ ] **Step 6: Add the MIT license**
+- [x] **Step 6: Add the MIT license**
 
 Create `LICENSE` with the standard MIT license text beginning:
 
@@ -472,7 +472,7 @@ furnished to do so, subject to the following conditions:
 
 Continue with the complete standard MIT terms through the warranty and liability disclaimer.
 
-- [ ] **Step 7: Run repository tests**
+- [x] **Step 7: Run repository tests**
 
 Run:
 
@@ -482,7 +482,7 @@ Run:
 
 Expected: all repository-accuracy tests pass.
 
-- [ ] **Step 8: Commit public configuration and metadata corrections**
+- [x] **Step 8: Commit public configuration and metadata corrections**
 
 ```bash
 git add .env.example TODO.md LICENSE src/__init__.py src/chat.py review.py tests/test_repository_accuracy.py
@@ -497,7 +497,7 @@ git commit -m "docs: align public configuration with current product"
 - Modify: `README.md`
 - Modify: `tests/test_repository_accuracy.py`
 
-- [ ] **Step 1: Add failing README-accuracy tests**
+- [x] **Step 1: Add failing README-accuracy tests**
 
 Add these methods to `RepositoryAccuracyTests`:
 
@@ -550,7 +550,7 @@ Add these methods to `RepositoryAccuracyTests`:
             self.assertTrue((ROOT / path).exists(), path)
 ```
 
-- [ ] **Step 2: Run the README tests and verify they fail**
+- [x] **Step 2: Run the README tests and verify they fail**
 
 Run:
 
@@ -560,7 +560,7 @@ Run:
 
 Expected: failures for missing current features and obsolete architecture claims.
 
-- [ ] **Step 3: Replace `README.md` with the approved current structure**
+- [x] **Step 3: Replace `README.md` with the approved current structure**
 
 Write a concise English README containing these exact sections and facts:
 
@@ -828,7 +828,7 @@ See [TODO.md](TODO.md) for the current roadmap.
 MIT — see [LICENSE](LICENSE).
 ```
 
-- [ ] **Step 4: Run README and repository tests**
+- [x] **Step 4: Run README and repository tests**
 
 Run:
 
@@ -838,7 +838,7 @@ Run:
 
 Expected: all repository-accuracy tests pass.
 
-- [ ] **Step 5: Commit the README rewrite**
+- [x] **Step 5: Commit the README rewrite**
 
 ```bash
 git add README.md tests/test_repository_accuracy.py
@@ -852,7 +852,7 @@ git commit -m "docs: rewrite README for current learning workflow"
 **Files:**
 - Modify: `docs/superpowers/plans/2026-08-10-repository-accuracy-audit.md` (checkboxes only)
 
-- [ ] **Step 1: Run all Python tests with explicit configuration**
+- [x] **Step 1: Run all Python tests with explicit configuration**
 
 Run:
 
@@ -869,7 +869,7 @@ SECRET_KEY=test-secret \
 
 Expected: every Python test passes with 0 failures and 0 errors.
 
-- [ ] **Step 2: Run all JavaScript tests**
+- [x] **Step 2: Run all JavaScript tests**
 
 Run:
 
@@ -879,7 +879,7 @@ node --test tests/api-response.test.js
 
 Expected: 4 tests pass and 0 fail.
 
-- [ ] **Step 3: Run static repository checks**
+- [x] **Step 3: Run static repository checks**
 
 Run:
 
@@ -901,7 +901,7 @@ rg -n 'ChatGPT / 豆包 / Kimi / Claude' web/export.html
 
 Expected: exactly the existing Practice to Go explanatory line is returned.
 
-- [ ] **Step 4: Review the complete diff and commit plan completion**
+- [x] **Step 4: Review the complete diff and commit plan completion**
 
 Run:
 
