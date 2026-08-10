@@ -1,9 +1,8 @@
-"""BingeLingo reviewer — a tiny local web app for reviewing your saved cards.
+"""BingeLingo Flask application for Revision, Scene Talk, and Practice to Go.
 
-    python review.py            # then open http://127.0.0.1:5001
-
-The Notion token and proxy stay server-side; the browser only ever sees the
-already-flattened card JSON from /api/cards.
+Run locally with `python review.py`, or deploy the `app` object through Gunicorn.
+Notion credentials and model API keys stay server-side; browsers receive only
+the application data returned by authenticated API routes.
 """
 from __future__ import annotations
 

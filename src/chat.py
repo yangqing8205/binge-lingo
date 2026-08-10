@@ -1,13 +1,10 @@
-"""Roleplay conversation practice — the "对话练习" mode.
+"""Scene Talk roleplay practice and AI-generated character personas.
 
-The learner picks one of ten characters; the model stays in that character's
-voice and naturally steers the chat so the learner gets openings to USE a few of
-their saved expressions (rather than just recognizing them). At the end the model
-drops character and grades which target expressions actually came out.
-
-Sessions live in a plain in-memory dict — this is a single-user local tool, so no
-database. Everything model-facing reuses the same OpenAI-compatible client and
-config as vision.py.
+The learner selects a character and practises saved expressions through a short
+conversation. Character records live in SQLite, while active chat sessions are
+process-local and therefore require a single Gunicorn worker in the current MVP.
+All model calls reuse the OpenAI-compatible client and configuration from the
+capture pipeline.
 """
 from __future__ import annotations
 
