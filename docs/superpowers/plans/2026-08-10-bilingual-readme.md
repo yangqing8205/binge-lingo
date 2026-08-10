@@ -15,7 +15,7 @@
 **Files:**
 - Modify: `tests/test_repository_accuracy.py`
 
-- [ ] **Step 1: Add failing bilingual README tests**
+- [x] **Step 1: Add failing bilingual README tests**
 
 Add these methods to `RepositoryAccuracyTests`:
 
@@ -67,7 +67,7 @@ Add these methods to `RepositoryAccuracyTests`:
             self.assertIn(required, text)
 ```
 
-- [ ] **Step 2: Run the new tests and verify RED**
+- [x] **Step 2: Run the new tests and verify RED**
 
 Run:
 
@@ -77,7 +77,7 @@ Run:
 
 Expected: the new tests fail because `README_CN.md` does not exist, the English README has no Chinese link, and it still contains `advanced learner` wording.
 
-- [ ] **Step 3: Commit the failing tests**
+- [x] **Step 3: Commit the failing tests**
 
 ```bash
 git add tests/test_repository_accuracy.py
@@ -92,7 +92,7 @@ git commit -m "test: define bilingual README contract"
 - Modify: `README.md`
 - Create: `README_CN.md`
 
-- [ ] **Step 1: Add the language switch to the English README**
+- [x] **Step 1: Add the language switch to the English README**
 
 Immediately below `# BingeLingo`, add:
 
@@ -108,7 +108,7 @@ Keep the existing portfolio metadata directly below the tagline:
 [Portfolio](https://yangqingportfolio.com.cn) · Personal MVP · macOS-first capture workflow
 ```
 
-- [ ] **Step 2: Replace proficiency-based wording in the English README**
+- [x] **Step 2: Replace proficiency-based wording in the English README**
 
 Replace the opening product sentence with:
 
@@ -137,7 +137,7 @@ Replace the extraction bullet with:
   slang, and tone-carrying colloquialisms.
 ```
 
-- [ ] **Step 3: Create the complete Chinese README**
+- [x] **Step 3: Create the complete Chinese README**
 
 Create `README_CN.md` with:
 
@@ -380,7 +380,7 @@ python review.py
 MIT，详见 [LICENSE](LICENSE)。
 ```
 
-- [ ] **Step 4: Run the repository tests and verify GREEN**
+- [x] **Step 4: Run the repository tests and verify GREEN**
 
 Run:
 
@@ -390,7 +390,7 @@ Run:
 
 Expected: all repository-accuracy tests pass.
 
-- [ ] **Step 5: Commit the bilingual README**
+- [x] **Step 5: Commit the bilingual README**
 
 ```bash
 git add README.md README_CN.md
@@ -404,7 +404,7 @@ git commit -m "docs: add Simplified Chinese README"
 **Files:**
 - Modify: `docs/superpowers/plans/2026-08-10-bilingual-readme.md` (checkboxes only)
 
-- [ ] **Step 1: Run all Python tests**
+- [x] **Step 1: Run all Python tests**
 
 ```bash
 API_BASE_URL=https://example.invalid/api/v3 \
@@ -419,7 +419,7 @@ SECRET_KEY=test-secret \
 
 Expected: all Python tests pass with 0 failures and 0 errors.
 
-- [ ] **Step 2: Run all JavaScript tests and static checks**
+- [x] **Step 2: Run all JavaScript tests and static checks**
 
 ```bash
 node --test tests/api-response.test.js
@@ -429,7 +429,7 @@ rg -n -i 'advanced English learners|advanced learners|advanced learner|中高阶
 
 Expected: JavaScript reports 4 passes, `git diff --check` succeeds, and the final `rg` command returns no matches.
 
-- [ ] **Step 3: Commit the test contract and completed plan**
+- [x] **Step 3: Commit the test contract and completed plan**
 
 Mark completed checkboxes, then run:
 
