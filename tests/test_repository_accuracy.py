@@ -89,6 +89,52 @@ class RepositoryAccuracyTests(unittest.TestCase):
             self.assertIn(path, text)
             self.assertTrue((ROOT / path).exists(), path)
 
+    def test_readmes_link_to_each_other(self):
+        english = self.read("README.md")
+        self.assertTrue((ROOT / "README_CN.md").exists())
+        chinese = self.read("README_CN.md")
+        self.assertIn('href="./README_CN.md"', english)
+        self.assertIn('href="./README.md"', chinese)
+
+    def test_readmes_use_needs_based_positioning(self):
+        self.assertTrue((ROOT / "README_CN.md").exists())
+        combined = self.read("README.md") + self.read("README_CN.md")
+        normalized = " ".join(combined.split())
+        for label in (
+            "advanced English learners",
+            "advanced learners",
+            "advanced learner",
+            "中高阶英语学习者",
+            "中高阶",
+        ):
+            self.assertNotIn(label.lower(), combined.lower())
+        self.assertIn(
+            "English learners who want to turn expressions from shows into "
+            "language they can actively use",
+            normalized,
+        )
+        self.assertIn(
+            "希望把影视中的地道表达真正用起来的英语学习者",
+            combined,
+        )
+
+    def test_chinese_readme_describes_the_current_product(self):
+        self.assertTrue((ROOT / "README_CN.md").exists())
+        text = self.read("README_CN.md")
+        for required in (
+            "Revision",
+            "Scene Talk",
+            "Practice to Go",
+            "OpenAI-compatible Chat Completions",
+            "火山引擎 Ark",
+            "SQLite",
+            "Render",
+            "APP_PASSWORD",
+            "SECRET_KEY",
+            "当前限制",
+        ):
+            self.assertIn(required, text)
+
 
 if __name__ == "__main__":
     unittest.main()
