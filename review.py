@@ -39,12 +39,18 @@ app = Flask(__name__, static_folder=WEB_DIR, static_url_path="")
 PORT = 5001
 
 # ---- simple password gate ----
-# Single shared password; no accounts. Set APP_PASSWORD in the environment on
-# deploy; falls back to the baked-in default for local use.
-APP_PASSWORD = os.getenv("APP_PASSWORD", "9713.jiayouYQ")
-# Signs the session cookie. Set SECRET_KEY on Render so logins survive restarts
-# and are consistent across workers; otherwise a random per-process key is used.
-app.secret_key = os.getenv("SECRET_KEY", secrets.token_hex(32))
+# Single shared password; no accounts. This must be configured explicitly so a
+# deployed copy can never fall back to a password published in source control.
+APP_PASSWORD = os.getenv("APP_PASSWORD", "").strip()
+if not APP_PASSWORD:
+    raise RuntimeError(
+        "Missing required environment variable 'APP_PASSWORD'. "
+        "Set it in .env for local use or in the deployment environment."
+    )
+
+# Signs the session cookie. Render supplies a stable generated value; local
+# development may use SECRET_KEY from .env or a process-local random fallback.
+app.secret_key = os.getenv("SECRET_KEY", "").strip() or secrets.token_hex(32)
 # Endpoints reachable without a valid session.
 _PUBLIC_PATHS = {"/login", "/favicon.ico"}
 
