@@ -433,6 +433,20 @@ def flatten_card(display_name: str, card: dict) -> str:
             "same one every time): " + " / ".join(openings)
         )
 
+    greetings = card.get("signature_greetings") or []
+    if greetings:
+        lines.append("Signature greetings you can use to open a conversation "
+                     "(pick at most one per session, don't force it):")
+        for g in greetings:
+            setup = g.get("setup", "")
+            payoff = g.get("payoff", "")
+            conf = g.get("confidence", "")
+            # Only high-confidence greetings are actionable at runtime
+            if conf == "high":
+                lines.append(f"  - Setup: {setup} | Payoff: {payoff}")
+            elif conf == "medium":
+                lines.append(f"  - (maybe) Setup: {setup} | Payoff: {payoff}")
+
     fmt = card.get("format_style") or {}
     fmt_bits = [
         fmt.get("caps", ""), fmt.get("bold", ""), fmt.get("ellipsis", ""),

@@ -41,8 +41,6 @@ _client = OpenAI(
 
 _NO_THINKING = {"thinking": {"type": "disabled"}}
 
-_NO_THINKING = {"thinking": {"type": "disabled"}}
-
 # Cap on parallel fanout calls for cast generation — bounds concurrent load on
 # the gateway regardless of how many characters get selected (max 8, see
 # select_cast_characters).
@@ -127,6 +125,33 @@ HARD RULES (apply to every feature you write, for any show or character):
    this is generic/interchangeable", REWRITE the move to be more specific to
    THIS character (drawing on the sourced scene from rule 1) before reporting
    it — don't report the generic version.
+
+5. IDENTITY-BEARING vs GENERIC TRAITS. The app already knows the character's
+   archetype (friendly, awkward, optimistic, etc.). What it needs from you are
+   the IDENTITY-BEARING behaviours that make THIS specific character
+   RECOGNISABLE -- not just the archetype label. For every trait you write, ask
+   yourself: "if I hid the character name and show, would a fan recognise this
+   character from this behaviour after 4-5 turns?" If the honest answer is no,
+   dig deeper or drop it. Prefer:
+   - Recognisable greeting/opening patterns and conversational entry rituals
+   - Recurring joke construction mechanics (setup->payoff, callback, etc.)
+   - Characteristic reactions to embarrassment, confusion, or excitement
+   - Recognisable social habits and verbal tics
+   - Recurring obsessions, themes, or preoccupations
+   - Specific types of misunderstanding or misplaced confidence
+   - Signature conversational rhythms
+   over generic labels like "friendly", "sarcastic", or "goofy".
+
+6. SIGNATURE GREETINGS. `signature_greetings` must be CONCRETE setup/payoff
+   BEHAVIOURS a fan would recognise, not generic opening lines. Each entry
+   needs a `why_distinctive` self-check: explain why this greeting is specific
+   to THIS character. If you cannot name a specific scene or moment, or if the
+   greeting would fit any character of this archetype, DO NOT include it.
+   - 0-3 entries max. Empty list is the safe default.
+   - Only mark `confidence: "high"` when the greeting is a well-known
+     character signature. When in doubt, use "medium" or omit it.
+   - NEVER invent a fake "classic" greeting just to fill the field.
+   - A generic "Hey buddy, great to see you!" is NOT a signature greeting.
 """
 
 _EVIDENCE_SCHEMA = {
@@ -214,6 +239,47 @@ _CARD_SCHEMA_PROPERTIES = {
         "description": "Several DIFFERENT ways this character might kick off a "
         "conversation, in their voice.",
     },
+    "signature_greetings": {
+        "type": "array",
+        "description": "0-3 concrete, highly recognizable character-specific "
+        "opening/greeting BEHAVIORS (not just text). Only include when reliable "
+        "evidence exists -- empty list is better than a fake one. Each entry is a "
+        "structured setup/payoff pair the runtime can actually render as sequential "
+        "messages. A fan should recognise the character from the greeting alone.",
+        "items": {
+            "type": "object",
+            "properties": {
+                "setup": {
+                    "type": "string",
+                    "description": "The setup line -- first message in the sequence.",
+                },
+                "payoff": {
+                    "type": "string",
+                    "description": "The payoff line -- second message, after a beat.",
+                },
+                "usage": {
+                    "type": "string",
+                    "enum": ["new_session_opening"],
+                    "description": "When this greeting is appropriate.",
+                },
+                "confidence": {
+                    "type": "string",
+                    "enum": ["high", "medium", "low"],
+                    "description": "'high' only when the greeting is a well-known "
+                    "characteristic behaviour fans would recognise. 'medium' when "
+                    "it's in-character but less iconic. 'low' entries are discarded "
+                    "by the runtime -- only include them if you're unsure.",
+                },
+                "why_distinctive": {
+                    "type": "string",
+                    "description": "A sentence explaining why this greeting is "
+                    "recognisable as THIS specific character -- the self-check that "
+                    "prevents generic 'hey buddy!' from being stored as a signature.",
+                },
+            },
+            "required": ["setup", "payoff", "usage", "confidence", "why_distinctive"],
+        },
+    },
     "relationship_style": {
         "type": "object",
         "description": "How this character relates to the learner they're chatting with.",
@@ -259,8 +325,10 @@ Return your result by calling the `report_persona` tool with these fields:
   the built-ins: "I've got a Fil-osophy for every situation. You're welcome."
 
 - card: the structured card (voice, signature_moves, format_style,
-  opening_variants, relationship_style, avoid) — this is a single, complete
-  card, so aim for 2-4 signature_moves and 2-3 opening_variants.
+  opening_variants, signature_greetings, relationship_style, avoid) — this is a single, complete
+  card, so aim for 2-4 signature_moves, 2-3 opening_variants,
+  and 0-3 signature_greetings (only when you have reliable evidence -- empty list
+  is the safe default for most characters).
 """
 
 _PERSONA_TOOL = {
@@ -390,8 +458,9 @@ You design a STARTER roleplay card for one already-chosen character from a
 show, for an English-conversation practice app. The name is already decided —
 you only fill in the card. Keep this pass DELIBERATELY LIGHT: exactly 1-2
 signature_moves and exactly 1 opening_variant (a fuller version gets generated
-later, only if this character is actually picked for a chat). Still give the
-full voice, format_style, relationship_style, and avoid — those are short and
+later, only if this character is actually picked for a chat). signature_greetings
+should be an empty list at this stage -- leave them for the full-card completion.
+Still give the full voice, format_style, relationship_style, and avoid — those are short and
 worth getting right from the start.
 
 {_CARD_HARD_RULES}
@@ -743,6 +812,9 @@ given the starter card as-is — keep voice/format_style/relationship_style/
 avoid as they are unless you spot a real problem, but:
 - Expand signature_moves to 3-5 TOTAL (keep the existing one(s), add more).
 - Expand opening_variants to 2-3 TOTAL (keep the existing one, add more).
+- Add signature_greetings: 0-3 entries, ONLY when you have reliable evidence
+  of a recognisable character-specific greeting behaviour. Empty list is the
+  safe default. Follow the same evidence rules as signature_moves.
 
 {_CARD_HARD_RULES}
 
@@ -850,7 +922,23 @@ def _feature_injection(card: dict | None, used_names: set[str]) -> str:
     return "\n".join(lines)
 
 
-def _kickoff_instruction(card: dict | None) -> str:
+def _kickoff_instruction(card: dict | None, greeting: dict | None = None) -> str:
+    """Build the kickoff instruction for the model.
+
+    If a signature_greeting was selected, the runtime has already rendered it
+    as sequential messages and the model is asked to continue from there.
+    Otherwise, the model generates the opening from opening_variants.
+    """
+    if greeting:
+        base = (
+            "You just opened with your signature greeting. Now, in character, "
+            "transition naturally into the conversation. Set up a casual little "
+            "scenario that gives the learner a natural opening to use one of the "
+            "target expressions. Do not mention the expressions or that this is a test. "
+            "Do NOT repeat the greeting."
+        )
+        return base
+
     base = (
         "Start the conversation now. In character, greet the learner and set up a "
         "casual little scenario that gives them a natural opening to use one of the "
@@ -866,6 +954,55 @@ def _kickoff_instruction(card: dict | None) -> str:
     return base
 
 
+# Probability of using a signature greeting when one is available.
+# Not 1.0 -- we want natural variation, not forced greetings.
+_SIGNATURE_GREETING_CHANCE = 0.55
+
+
+def _pick_signature_greeting(card: dict | None, used_greetings: set[int]) -> dict | None:
+    """Select a high-confidence signature greeting probabilistically.
+
+    Returns the greeting dict (with its index stored as `_idx`) or None.
+    Only considers high-confidence greetings not yet used this session.
+    """
+    greetings = (card or {}).get("signature_greetings") or []
+    if not greetings:
+        return None
+
+    high_conf = [
+        (i, g) for i, g in enumerate(greetings)
+        if g.get("confidence") == "high" and i not in used_greetings
+    ]
+    if not high_conf:
+        return None
+
+    if random.random() > _SIGNATURE_GREETING_CHANCE:
+        return None
+
+    idx, chosen = random.choice(high_conf)
+    result = dict(chosen)
+    result["_idx"] = idx
+    return result
+
+
+def _greeting_to_messages(greeting: dict) -> list[dict]:
+    """Convert a signature greeting into sequential frontend messages.
+
+    setup -> pause_before_ms -> payoff, preserving the structure.
+    """
+    messages = []
+    setup = (greeting.get("setup") or "").strip()
+    payoff = (greeting.get("payoff") or "").strip()
+
+    if setup:
+        messages.append({"text": setup, "pause_before_ms": 0})
+    if payoff:
+        pause = 900 if setup else 0
+        messages.append({"text": payoff, "pause_before_ms": pause})
+
+    return messages
+
+
 def _join_reply_text(messages: list[dict]) -> str:
     """Flatten a structured reply into plain text for the conversation history
     the model itself sees on later turns (the frontend gets the structured
@@ -874,7 +1011,13 @@ def _join_reply_text(messages: list[dict]) -> str:
 
 
 def start_session(character_key: str, expressions: list[str]) -> dict:
-    """Create a session, choose target expressions, and get the opening line."""
+    """Create a session, choose target expressions, and get the opening line.
+
+    If the character has high-confidence unused signature_greetings, one may be
+    selected probabilistically and rendered as sequential setup/payoff messages
+    before the model-generated opening. Otherwise, the model generates the
+    opening from opening_variants as before.
+    """
     char = characters.get(character_key)
     if not char:
         raise ValueError(f"Unknown character: {character_key!r}")
@@ -885,9 +1028,21 @@ def start_session(character_key: str, expressions: list[str]) -> dict:
     system = _system_prompt(char["persona"], targets)
     card = char.get("card")
     used_moves: set[str] = set()
+    used_greetings: set[int] = set()
 
-    kickoff = _kickoff_instruction(card) + _feature_injection(card, used_moves)
-    messages = _call_model_reply(system, [{"role": "user", "content": kickoff}])
+    # Try to pick a signature greeting
+    greeting = _pick_signature_greeting(card, used_greetings)
+    greeting_messages: list[dict] = []
+
+    if greeting is not None:
+        used_greetings.add(greeting["_idx"])
+        greeting_messages = _greeting_to_messages(greeting)
+
+    kickoff = _kickoff_instruction(card, greeting) + _feature_injection(card, used_moves)
+    model_messages = _call_model_reply(system, [{"role": "user", "content": kickoff}])
+
+    # Concatenate: greeting messages (if any) + model's continuation
+    messages = greeting_messages + model_messages
 
     _sessions[session_id] = {
         "character": character_key,
@@ -895,6 +1050,7 @@ def start_session(character_key: str, expressions: list[str]) -> dict:
         "system": system,
         "card": card,
         "used_moves": used_moves,
+        "used_greetings": used_greetings,
         "targets": targets,
         # Full turn history (user/assistant). The kickoff instruction is not
         # stored so it doesn't leak into later context.
