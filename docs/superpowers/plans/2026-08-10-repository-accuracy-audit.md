@@ -918,7 +918,7 @@ git add docs/superpowers/plans/2026-08-10-repository-accuracy-audit.md
 git commit -m "docs: record repository audit completion"
 ```
 
-- [ ] **Step 5: Push the reviewed commits**
+- [x] **Step 5: Push the reviewed commits**
 
 Run:
 
@@ -928,7 +928,7 @@ git push origin main
 
 Expected: GitHub accepts the new commits on `main`.
 
-- [ ] **Step 6: Verify published repository content through GitHub**
+- [x] **Step 6: Verify published repository content through GitHub**
 
 Run:
 
