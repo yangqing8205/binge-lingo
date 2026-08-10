@@ -1,193 +1,265 @@
 # BingeLingo
 
-**Turn the shows you binge into an English vocabulary notebook — automatically.**
+**Turn subtitle screenshots into a reusable English learning loop — capture
+expressions, review them in context, and practise through character conversations.**
 
-BingeLingo watches a screenshot folder on your Mac. The moment you grab a frame
-from an English TV show or film, it reads the subtitle, decides whether the line
-contains an expression worth learning, and files a structured flashcard — Chinese
-gloss, usage note, the original line, difficulty, and the screenshot itself — into
-a Notion database. No copy-pasting, no manual lookups. Screenshot, keep watching,
-review in Notion later.
+[Portfolio](https://yangqingportfolio.com.cn) · Personal MVP · macOS-first capture workflow
 
-It is built for **advanced learners**: the extraction bar is not "words you don't
-know" but "expressions you understand yet couldn't produce yourself" — idioms,
-phrasal verbs, fixed collocations, and tone-carrying colloquialisms that textbooks
-skip.
+BingeLingo is an independent AI product experiment for advanced English learners.
+It starts with a familiar habit—saving a subtitle screenshot—and carries the
+expression beyond collection into contextual recall and speaking practice.
 
-## How it works
+## Why I built it
 
+Advanced learners often understand an idiom, phrasal verb, collocation, or slang
+expression while watching a show but cannot retrieve it when speaking. Screenshots
+accumulate, AI explanations disappear into chat history, and manually organizing
+examples interrupts the viewing experience. BingeLingo connects those fragmented
+steps into one workflow aimed at the gap between recognition and active use.
+
+## Product workflow
+
+```text
+Subtitle screenshot
+        ↓
+Multimodal expression extraction
+        ↓
+Notion knowledge card + original image evidence
+        ↓
+Contextual Revision with progressive hints
+        ↓
+Scene Talk character conversation
+        ↓
+Practice to Go prompt for another AI chat tool
 ```
-  Ctrl+Shift+L                                                    Notion
-  (custom screenshot) ──▶ screenshots/ ──▶ watchdog ──▶ vision ──▶ database
-                                             │            │           ▲
-                                     new-file event   Claude (native  │
-                                                       Messages API)   │
-                                                            │          │
-                                                       structured      │
-                                                       extraction ─────┘
-                                                                   image upload
-```
 
-1. **Capture** — a dedicated hotkey saves a selection screenshot into the watched
-   folder, keeping it separate from your everyday `Cmd+Shift+4` captures.
-2. **Detect** — a `watchdog` observer fires on each new image and waits for the
-   file to finish writing before processing.
-3. **Understand** — the screenshot is sent to a multimodal Claude model through the
-   Anthropic-native Messages API. A forced tool call returns a strict schema:
-   expression, Chinese meaning, usage scenario, the verbatim original line, and a
-   difficulty rating.
-4. **Store** — one Notion row is created per expression, with the screenshot
-   embedded in the page body. Images are uploaded via Notion's own File Upload API
-   (no third-party host required), with an Imgur fallback.
+## Core features
 
-## Features
+### 1. Screenshot capture and expression extraction
 
-- **Zero-friction capture** — screenshot with a hotkey, everything else is automatic.
-- **Built-in reviewer** — a local web app reads your cards back from Notion for
-  study, with three recall modes (cloze / zh→en / en→zh).
-- **Advanced-learner filtering** — a carefully tuned prompt rejects the obvious and
-  surfaces the idiomatic. A deliberate screenshot always yields at least one card.
-- **Structured Notion output** — writes directly into typed database columns
-  (Expression / Chinese / Context / Difficulty / Example / Source / Screenshot),
-  not a wall of text.
-- **Resilient parsing** — tolerates a gateway that occasionally returns malformed,
-  string-wrapped, or unescaped JSON, salvaging valid records field-by-field.
-- **Private by design** — no autostart, no background daemon. You launch it before
-  watching and quit it after. Nothing runs unless you ask.
-- **Network-aware** — routes only Notion traffic through an optional proxy while
-  keeping the LLM call direct, and retries the intermittent TLS failures seen on
-  older system SSL stacks.
+- A macOS watcher monitors a dedicated screenshot folder.
+- A vision-capable model is called through the OpenAI Python SDK and an
+  OpenAI-compatible Chat Completions endpoint.
+- The extraction prompt focuses on expressions an advanced learner understands
+  but may not actively produce: idioms, phrasal verbs, fixed collocations, slang,
+  and tone-carrying colloquialisms.
+- Tool Calling returns structured fields instead of relying on free-form text.
+- Each Notion entry stores meaning, context, original subtitle, difficulty,
+  review sentence, collocation frame, show, episode, and the source screenshot.
 
-## Tech stack
+### 2. Revision
 
-| Concern            | Choice                                              |
-| ------------------ | --------------------------------------------------- |
-| Language           | Python 3.9+                                          |
-| Folder watching    | [`watchdog`](https://pypi.org/project/watchdog/)    |
-| LLM                | [`anthropic`](https://pypi.org/project/anthropic/) (native Messages API, multimodal, tool-use) |
-| Notion             | [`notion-client`](https://pypi.org/project/notion-client/) (2025-09-03 data-source API) |
-| Image upload       | Notion File Upload API, with an Imgur fallback      |
-| Config             | [`python-dotenv`](https://pypi.org/project/python-dotenv/) |
-| HTTP               | [`requests`](https://pypi.org/project/requests/)    |
+Revision uses a progressive recall flow rather than the early three-mode design:
+
+1. Recall the expression from a newly generated conversational context.
+2. Try again with Chinese meaning and initial-letter hints.
+3. Reveal the answer, usage details, collocation frame, original line, and screenshot.
+
+Attempts are recorded in local SQLite with result type, elapsed time, history,
+today's count, and first-try accuracy. This is currently a recording layer, not
+a complete spaced-repetition scheduler.
+
+### 3. Scene Talk
+
+- Generate or select show-based character personas.
+- Practise target expressions through short roleplay conversations.
+- The character creates natural openings without directly revealing which phrase
+  the learner should use.
+- End each session with a short usage debrief.
+- Character records are stored in SQLite; active sessions remain in process memory.
+
+### 4. Practice to Go
+
+Choose a character, target expressions, conversation length, guidance level,
+setting, correction style, and response language. BingeLingo assembles a portable
+prompt that can be pasted into ChatGPT, Doubao, Kimi, Claude, or another AI chat
+tool. This module builds the prompt locally and does not make another model call.
+
+### 5. Show-based organization
+
+The watcher asks for the current show and episode, saves them into Notion, and
+organizes screenshots by show. Revision, Scene Talk, and Practice to Go share a
+current-show switcher.
 
 ## Architecture
 
+```text
+macOS screenshot folder
+        │
+        ▼
+watchdog → src/vision.py → OpenAI-compatible model endpoint
+        │                         │
+        │                         └─ structured Tool Calling output
+        ▼
+src/notion_writer.py → Notion cards + source screenshot
+        │
+        ▼
+review.py (Flask / Gunicorn)
+        ├─ Revision       → Notion cards + data/review_log.db
+        ├─ Scene Talk     → data/characters.db + in-memory sessions
+        ├─ Show settings  → data/app_settings.db
+        └─ Practice to Go → portable prompt assembled in the browser
 ```
+
+The code uses the OpenAI Python SDK against an OpenAI-compatible Chat Completions
+API. The deployed version currently uses Volcengine Ark. The model and endpoint
+are configured through environment variables rather than hard-coded provider
+credentials.
+
+## Engineering highlights
+
+- Structured multimodal Tool Calling for screenshot analysis.
+- Prompt-level filtering and dictionary-form normalization of expressions.
+- Recovery for malformed or string-wrapped tool arguments.
+- Inflection-tolerant answer matching with word-order checks.
+- JSON API error normalization so HTML/empty upstream errors become readable UI messages.
+- Ark authentication migration from an incompatible SDK/header format.
+- Render timeout mitigation through smaller character-generation requests and disabled thinking.
+- Shared-password access gate for a small demo without collecting user accounts.
+
+## Tech stack
+
+| Area | Technology |
+| --- | --- |
+| Backend | Python 3.11, Flask, Gunicorn |
+| Model client | OpenAI Python SDK |
+| Model protocol | OpenAI-compatible Chat Completions with vision and Tool Calling |
+| Current provider | Volcengine Ark |
+| Knowledge store | Notion API |
+| Local state | SQLite and small local state files |
+| Capture | watchdog, macOS screenshot workflow |
+| Frontend | HTML, CSS, vanilla JavaScript, Fetch API |
+| Deployment | Render |
+
+## Repository structure
+
+The main product surfaces are `main.py`, `review.py`, `src/vision.py`,
+`src/chat.py`, `src/review_log.py`, `src/characters.py`, `src/settings.py`,
+`web/review.html`, `web/chat.html`, `web/export.html`, and `render.yaml`.
+
+```text
 binge-lingo/
-├── main.py                 Capture pipeline entry: watch mode, or single-image test
-├── review.py               Reviewer entry: local Flask web app for studying cards
-├── start-watching.command  Double-click launcher (foreground, quit to stop)
+├── main.py                    # watcher and single-image entry point
+├── review.py                  # Flask app and authenticated API routes
+├── render.yaml                # Render service definition
+├── Procfile                   # Gunicorn entry point
 ├── requirements.txt
-├── .env                    Your secrets — git-ignored, never committed
-├── .env.example            Config template
-├── .gitignore
-├── screenshots/            Watched folder (contents git-ignored)
-├── web/                    Reviewer front end (static, served by review.py)
-│   ├── index.html
-│   ├── style.css
-│   └── app.js
-└── src/
-    ├── config.py           Loads and validates .env; central settings
-    ├── models.py           Expression / ScreenshotAnalysis dataclasses
-    ├── vision.py           Multimodal LLM call + tolerant structured parsing
-    ├── uploader.py         Image upload to Notion (or Imgur), with SSL retry
-    ├── notion_writer.py    Resolves the data source, writes one row per card
-    ├── notion_reader.py    Reads cards back out: properties + image + cloze
-    └── watcher.py          watchdog observer + end-to-end pipeline orchestration
+├── src/
+│   ├── config.py              # environment and path configuration
+│   ├── watcher.py             # screenshot-folder observer
+│   ├── vision.py              # vision analysis and review-sentence generation
+│   ├── models.py              # extraction data structures
+│   ├── notion_writer.py       # Notion page and image writes
+│   ├── notion_reader.py       # Notion cards for the web application
+│   ├── matching.py            # inflection-tolerant answer checking
+│   ├── review_log.py          # Revision history in SQLite
+│   ├── characters.py          # character personas in SQLite
+│   ├── chat.py                # Scene Talk generation and sessions
+│   └── settings.py            # current-show state in SQLite
+├── web/
+│   ├── login.html
+│   ├── review.html
+│   ├── chat.html
+│   ├── export.html
+│   ├── common.js
+│   ├── review.js
+│   ├── chat.js
+│   ├── export.js
+│   ├── api-response.js
+│   └── style.css
+├── tests/
+│   ├── test_chat_cast.py
+│   ├── test_configuration_contract.py
+│   ├── test_repository_accuracy.py
+│   └── api-response.test.js
+└── data/                      # runtime SQLite files; databases are git-ignored
 ```
 
-Each screenshot flows through `watcher → vision → notion_writer → uploader`, and a
-local `.processed_screenshots.json` records what's already been handled so a
-restart never double-files a card.
-
-## Setup
+## Local setup
 
 ```bash
-git clone <your-repo-url> binge-lingo
+git clone https://github.com/yangqing8205/binge-lingo.git
 cd binge-lingo
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-```
-
-## Configuration
-
-Copy the template and fill in your own values:
-
-```bash
 cp .env.example .env
 ```
 
-| Variable            | Description                                                      |
-| ------------------- | ---------------------------------------------------------------- |
-| `API_BASE_URL`      | Anthropic-native Messages API endpoint (or a compatible gateway) |
-| `API_KEY`           | API key for the endpoint above                                   |
-| `API_MODEL`         | Multimodal model id, e.g. `claude-sonnet-4-5`                    |
-| `NOTION_TOKEN`      | Notion integration token                                         |
-| `NOTION_DATABASE_ID`| Target database id                                               |
-| `WATCH_DIR`         | Folder to watch (defaults to `./screenshots`)                    |
-| `IMAGE_HOST`        | `notion` (default) or `imgur`                                    |
-| `IMGUR_CLIENT_ID`   | Only needed when `IMAGE_HOST=imgur`                              |
-| `HTTPS_PROXY`       | Optional proxy for Notion traffic; leave blank for direct access |
+Configure `.env` before importing or running the application:
 
-**Notion setup:** share the target database with your integration, and give it
-these properties — a `title` column named **Expression**, plus rich-text columns
-**Chinese**, **Context**, **Difficulty**, **Example**, **Source**, **Screenshot**.
+| Variable | Purpose |
+| --- | --- |
+| `API_BASE_URL` | OpenAI-compatible Chat Completions base URL |
+| `API_KEY` | API key for the configured provider |
+| `API_MODEL` | Provider model name or endpoint ID; required |
+| `NOTION_TOKEN` | Notion integration token |
+| `NOTION_DATABASE_ID` | Target Notion database ID |
+| `APP_PASSWORD` | Shared password for the web app; required |
+| `SECRET_KEY` | Stable Flask session-signing secret |
+| `WATCH_DIR` | Screenshot root; defaults to `./screenshots` |
+| `IMAGE_HOST` | `notion` or `imgur` |
+| `IMGUR_CLIENT_ID` | Required only for Imgur uploads |
+| `HTTPS_PROXY` | Optional proxy for Notion/image-host traffic |
+
+For the base Notion schema, create `Expression` as the title property and
+`Chinese`, `Context`, `Difficulty`, `Example`, and `Screenshot` as rich-text
+properties. The application can add `ReviewSentence`, `CommonStructure`, `Source`,
+`Show`, and `Episode` when they are missing.
 
 ## Usage
 
-```bash
-# Watch the folder continuously (Ctrl-C to stop)
-python main.py
+Start the screenshot watcher:
 
-# Or process a single screenshot to test the full pipeline
+```bash
+python main.py
+```
+
+It asks for the show and optional episode, then watches the corresponding folder.
+To process one image directly:
+
+```bash
 python main.py path/to/screenshot.png
 ```
 
-On macOS, double-click `start-watching.command` to launch the watcher in a Terminal
-window and see live logs; closing the window stops it.
-
-### Dedicated screenshot hotkey
-
-To feed only the frames you choose into the pipeline, bind a hotkey to a selection
-screenshot that saves into the watched folder — separate from your default
-`Cmd+Shift+4`. Create an Automator **Quick Action** ("Run Shell Script") with:
-
-```bash
-FILE="$HOME/binge-lingo/screenshots/binge-$(date +%Y%m%d-%H%M%S).png"
-/usr/sbin/screencapture -i "$FILE"
-```
-
-Save it, then assign a shortcut under **System Settings → Keyboard → Keyboard
-Shortcuts → Services**.
-
-## Review
-
-Once you've collected some cards, study them in the browser. The reviewer reads
-your Notion database live — no export step, no local copy to keep in sync.
+Start the web application locally:
 
 ```bash
 python review.py
-# then open http://127.0.0.1:5001
+# http://127.0.0.1:5001
 ```
 
-The Notion token and proxy stay server-side; the browser only receives the
-flattened card data. Three review modes, switchable in the UI:
+Available pages:
 
-- **挖空猜词 (cloze)** — the screenshot plus the original line with the target
-  expression blanked out (`Oh, she's a ___, huh?`). Recall it from the scene and
-  context, then reveal the full line, the expression, and the Chinese gloss.
-- **中译英 (zh → en)** — the Chinese meaning plus the screenshot; recall the
-  English expression.
-- **英译中 (en → zh)** — the English expression alone; recall the meaning, then
-  reveal the gloss, line, and screenshot.
+- `/review` — contextual Revision
+- `/chat` — Scene Talk
+- `/export` — Practice to Go
 
-Page through with the on-screen buttons or the arrow keys, and reveal with the
-space bar. If an expression can't be located in its example line (casing or
-inflection differences), that card quietly falls back to中译英 rather than
-showing a blank.
+## Render deployment
+
+`render.yaml` installs the Python requirements and serves `review:app` through
+Gunicorn. The current deployment intentionally uses one worker because active
+Scene Talk sessions are stored in process memory. Keep the existing 120-second
+timeout for model-backed character generation.
+
+Configure `API_BASE_URL`, `API_KEY`, `API_MODEL`, `NOTION_TOKEN`,
+`NOTION_DATABASE_ID`, and `APP_PASSWORD` in Render. `render.yaml` generates a
+stable `SECRET_KEY`.
+
+## Current limitations
+
+- The automatic capture workflow is macOS-first.
+- This is a personal MVP with a shared password, not a multi-tenant account system.
+- Cards depend on the owner's Notion database.
+- SQLite data and current-show settings are ephemeral on Render without a persistent disk.
+- Scene Talk sessions are lost on process restart and currently require one worker.
+- Revision records attempts but does not yet schedule a full SRS queue.
+- Scene Talk target selection still reads the full card set instead of only the active show.
+- There is no speech input, pronunciation scoring, or TTS yet.
+- Render free instances may cold-start or time out during model requests.
+
+See [TODO.md](TODO.md) for the current roadmap.
 
 ## License
 
-MIT
-
+MIT — see [LICENSE](LICENSE).

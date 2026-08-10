@@ -42,6 +42,53 @@ class RepositoryAccuracyTests(unittest.TestCase):
         self.assertIn("Copyright (c) 2026 Yang Qing", text)
         self.assertIn("Permission is hereby granted", text)
 
+    def test_readme_describes_the_current_product(self):
+        text = self.read("README.md")
+        for required in (
+            "Revision",
+            "Scene Talk",
+            "Practice to Go",
+            "OpenAI-compatible Chat Completions",
+            "Volcengine Ark",
+            "SQLite",
+            "Render",
+            "APP_PASSWORD",
+            "SECRET_KEY",
+            "Current limitations",
+        ):
+            self.assertIn(required, text)
+
+    def test_readme_does_not_describe_the_obsolete_architecture(self):
+        text = self.read("README.md")
+        for obsolete in (
+            "Claude (native",
+            "Anthropic-native Messages API",
+            "`anthropic`",
+            "claude-sonnet-4-5",
+            "three recall modes",
+            "web/index.html",
+            "web/app.js",
+        ):
+            self.assertNotIn(obsolete, text)
+
+    def test_readme_references_existing_core_paths(self):
+        text = self.read("README.md")
+        for path in (
+            "main.py",
+            "review.py",
+            "src/vision.py",
+            "src/chat.py",
+            "src/review_log.py",
+            "src/characters.py",
+            "src/settings.py",
+            "web/review.html",
+            "web/chat.html",
+            "web/export.html",
+            "render.yaml",
+        ):
+            self.assertIn(path, text)
+            self.assertTrue((ROOT / path).exists(), path)
+
 
 if __name__ == "__main__":
     unittest.main()
