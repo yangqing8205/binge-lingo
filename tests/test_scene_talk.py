@@ -1,10 +1,9 @@
 """Scene Talk upgrade tests.
 
 Covers:
-- Built-in cast completeness (12 characters, all have world_memory + opening_scenes)
+- Built-in cast completeness (12 characters, all have world_memory + scene_anchors)
 - Stella output format enforcement
 - First-round no-teaching-language rule
-- Opening scene selection
 - sync_builtin_characters mechanism
 - Backward compatibility (old cards still work)
 """
@@ -46,19 +45,47 @@ class BuiltinCastCompleteTests(unittest.TestCase):
         self.assertEqual(12, len(_BUILTIN_CARDS))
 
     def test_each_builtin_has_full_card(self):
-        """Every built-in has a non-None card with all new fields."""
+        """Every built-in has a non-None card with all expected fields."""
         from src.characters import _BUILTIN_CARDS
 
         required_fields = [
             "voice", "signature_moves", "format_style",
-            "opening_variants", "signature_greetings",
-            "world_memory", "signature_situations", "opening_scenes",
+            "opening_variants", "world_memory", "scene_anchors",
             "relationship_style", "avoid",
         ]
 
         for key, card in _BUILTIN_CARDS.items():
             for field in required_fields:
                 self.assertIn(field, card, f"{key} missing {field}")
+
+    def test_no_removed_fields_in_builtin_cards(self):
+        """Removed fields (signature_greetings, opening_scenes) are not present."""
+        from src.characters import _BUILTIN_CARDS
+
+        removed_fields = [
+            "signature_greetings", "opening_scenes",
+        ]
+
+        for key, card in _BUILTIN_CARDS.items():
+            for field in removed_fields:
+                self.assertNotIn(field, card, f"{key} still has removed field {field}")
+
+    def test_voice_has_no_evidence(self):
+        """voice dict no longer has evidence field."""
+        from src.characters import _BUILTIN_CARDS
+        for key, card in _BUILTIN_CARDS.items():
+            self.assertNotIn("evidence", card["voice"], f"{key} voice still has evidence")
+
+    def test_signature_moves_have_no_evidence_or_distinct_because(self):
+        """signature_moves entries no longer have evidence or distinct_because."""
+        from src.characters import _BUILTIN_CARDS
+        for key, card in _BUILTIN_CARDS.items():
+            for move in card["signature_moves"]:
+                self.assertNotIn("evidence", move, f"{key} move has evidence")
+                self.assertNotIn("distinct_because", move, f"{key} move has distinct_because")
+                self.assertIn("name", move)
+                self.assertIn("steps", move)
+                self.assertIn("frequency", move)
 
     def test_world_memory_has_concrete_facts(self):
         """world_memory entries are concrete facts, not personality traits."""
@@ -70,70 +97,82 @@ class BuiltinCastCompleteTests(unittest.TestCase):
         for key, card in _BUILTIN_CARDS.items():
             wm = card.get("world_memory", [])
             self.assertGreaterEqual(len(wm), 5, f"{key} too few world_memory entries")
-            # At least half should NOT contain generic trait words
             non_trait = [f for f in wm if not any(t in f.lower() for t in trait_words)]
             self.assertGreaterEqual(
                 len(non_trait), len(wm) // 2,
                 f"{key}: too many world_memory entries sound like personality traits"
             )
 
-    def test_signature_situations_exist(self):
-        """Every character has 3+ signature_situations."""
+    def test_scene_anchors_exist(self):
+        """Every character has 3+ scene_anchors (renamed from signature_situations)."""
         from src.characters import _BUILTIN_CARDS
         for key, card in _BUILTIN_CARDS.items():
-            ss = card.get("signature_situations", [])
-            self.assertGreaterEqual(len(ss), 3, f"{key} too few signature_situations")
+            sa = card.get("scene_anchors", [])
+            self.assertGreaterEqual(len(sa), 3, f"{key} too few scene_anchors")
 
-    def test_opening_scenes_have_correct_structure(self):
-        """Every character has opening_scenes with situation/setup/possible_targets."""
+    def test_opening_variants_have_no_teaching_language(self):
+        """Opening variants don't contain explicit teaching language."""
         from src.characters import _BUILTIN_CARDS
+        # Check for clearly teaching-oriented phrases, not every use of common words
+        # (e.g. "I've learned" is fine in normal dialogue; "let's learn English" is not).
+        banned_phrases = [
+            "english", "vocabulary", "target expression",
+            "let's practice", "want to practice", "practice your",
+            "let's learn", "learn english", "study english",
+            "today's lesson", "new lesson", "teaching",
+        ]
 
         for key, card in _BUILTIN_CARDS.items():
-            scenes = card.get("opening_scenes", [])
-            self.assertGreaterEqual(len(scenes), 2, f"{key} too few opening_scenes")
-            for sc in scenes:
-                self.assertIn("situation", sc, f"{key} scene missing situation")
-                self.assertIn("setup", sc, f"{key} scene missing setup")
-                self.assertIn("possible_targets", sc, f"{key} scene missing possible_targets")
-                self.assertIsInstance(sc["possible_targets"], list)
-                self.assertTrue(sc["situation"].strip())
-                self.assertTrue(sc["setup"].strip())
-
-    def test_opening_scenes_have_no_teaching_language(self):
-        """Scene setups don't contain English/practice/lesson words."""
-        from src.characters import _BUILTIN_CARDS
-        banned = ["english", "practice", "lesson", "learn", "expression",
-                  "target", "vocabulary", "study"]
-
-        for key, card in _BUILTIN_CARDS.items():
-            for sc in card.get("opening_scenes", []):
-                setup_lower = sc["setup"].lower()
-                for word in banned:
+            for ov in card.get("opening_variants", []):
+                ov_lower = ov.lower()
+                for phrase in banned_phrases:
                     self.assertNotIn(
-                        word, setup_lower,
-                        f"{key} scene setup contains banned word '{word}': {sc['setup'][:50]}"
+                        phrase, ov_lower,
+                        f"{key} opening_variant contains teaching phrase '{phrase}': {ov[:60]}"
                     )
 
     def test_alex_and_lily_are_new(self):
-        """Alex and Lily exist as new built-ins with proper data."""
+        """Alex and Lily exist as built-ins with proper data."""
         from src.characters import _BUILTIN_CARDS
 
         self.assertIn("alex", _BUILTIN_CARDS)
         self.assertIn("lily", _BUILTIN_CARDS)
 
-        # Alex should have science/academic stuff
         alex_wm = " ".join(_BUILTIN_CARDS["alex"]["world_memory"]).lower()
-        self.assertTrue(any(w in alex_wm for w in ["science", "academic", "competition", "smart"]))
+        self.assertTrue(any(w in alex_wm for w in ["science", "academic", "competition", "caltech"]))
 
-        # Lily should have deadpan/dad drama stuff
         lily_wm = " ".join(_BUILTIN_CARDS["lily"]["world_memory"]).lower()
-        self.assertTrue(any(w in lily_wm for w in ["deadpan", "food", "snack", "drama"]))
+        self.assertTrue(any(w in lily_wm for w in ["deadpan", "cam", "mitchell", "dads"]))
 
     def test_stella_has_minimal_moves(self):
         """Stella has fewer signature_moves (she's a dog)."""
         from src.characters import _BUILTIN_CARDS
         stella_moves = len(_BUILTIN_CARDS["stella"]["signature_moves"])
         self.assertLessEqual(stella_moves, 3)
+
+    def test_builtin_display_names_match_document(self):
+        """Built-in display_names and intros match the reference document."""
+        from src.characters import _BUILTINS
+
+        expected = {
+            "fil": ("Fil Funphy", "Jello! I've got a Fil-osophy for almost everything."),
+            "clair": ("Clair-ification", "I have a plan. Naturally, nobody is following it."),
+            "grumpa": ("Grumpa", "I built closets for forty years. I know when something doesn't fit."),
+            "gloria": ("Gloria-ous", "If you're going to tell a story, tell it with feeling."),
+            "cam": ("Cam the Ham", "Every ordinary story deserves proper lighting."),
+            "mitch": ("Mitch-match", "I'm not overthinking it. I'm considering every reasonable disaster."),
+            "halo": ("Hail-ley", "I know what people say. More importantly, I know what they mean."),
+            "alex": ("Alex-plain", "I checked the data. Then I checked the data checking the data."),
+            "lukini": ("The Great Lukini", "I have a theory. I also have tape."),
+            "manuscipt": ("Manimal", "Poetry before breakfast is not excessive. It is civilized."),
+            "lily": ("Lil-logical", "I'll wait until the adults finish making this complicated."),
+            "stella": ("Stella-r", "Woof."),
+        }
+
+        builtin_dict = {b[0]: (b[1], b[2]) for b in _BUILTINS}
+        for key, (exp_name, exp_intro) in expected.items():
+            self.assertEqual(exp_name, builtin_dict[key][0], f"{key} display_name mismatch")
+            self.assertEqual(exp_intro, builtin_dict[key][1], f"{key} intro mismatch")
 
 
 # ── Stella output format ─────────────────────────────────────────────────────
@@ -144,29 +183,40 @@ class StellaFormatTests(unittest.TestCase):
     def test_wrap_stella_normal_text(self):
         """Normal text gets wrapped into Woof. + Translation."""
         messages = [{"text": "I think there's a squirrel outside."}]
-        result = chat._wrap_stella_output(messages)
+        result = chat._wrap_stella(messages)
         self.assertEqual(1, len(result))
         text = result[0]["text"]
         self.assertTrue(text.startswith("Woof."))
         self.assertIn("Translation:", text)
         self.assertIn("squirrel", text)
 
-    def test_wrap_stella_already_correct(self):
-        """Already-formatted output is left alone."""
-        original = [{"text": "Woof.\n(Translation: Hi.)"}]
-        result = chat._wrap_stella_output(original)
-        self.assertEqual(1, len(result))
-        self.assertEqual(original[0]["text"], result[0]["text"])
+    def test_wrap_stella_strips_accidental_woof(self):
+        """If model accidentally generated 'Woof.' already, it gets stripped and re-wrapped."""
+        messages = [{"text": "Woof. I'm hungry."}]
+        result = chat._wrap_stella(messages)
+        text = result[0]["text"]
+        self.assertTrue(text.startswith("Woof."))
+        self.assertNotIn("Woof. Woof.", text)
+        self.assertIn("hungry", text)
+
+    def test_wrap_stella_strips_accidental_translation_wrapper(self):
+        """If model generated '(Translation: ...)' already, it gets stripped and re-wrapped."""
+        messages = [{"text": "(Translation: Jay is home.)"}]
+        result = chat._wrap_stella(messages)
+        text = result[0]["text"]
+        self.assertEqual(text.count("Translation:"), 1)
+        self.assertIn("Jay is home", text)
 
     def test_wrap_stella_empty(self):
-        """Empty messages list returns empty."""
-        result = chat._wrap_stella_output([])
-        self.assertEqual(0, len(result))
+        """Empty messages list returns a default translation."""
+        result = chat._wrap_stella([])
+        self.assertEqual(1, len(result))
+        self.assertTrue(result[0]["text"].startswith("Woof."))
 
     def test_wrap_stella_multiple_messages(self):
         """Multiple messages get joined and wrapped."""
         messages = [{"text": "First part."}, {"text": "Second part."}]
-        result = chat._wrap_stella_output(messages)
+        result = chat._wrap_stella(messages)
         self.assertEqual(1, len(result))
         text = result[0]["text"]
         self.assertIn("First part", text)
@@ -181,7 +231,7 @@ class StellaFormatTests(unittest.TestCase):
             [{"text": "I wonder if there are treats."}],
         ]
         for msgs in test_inputs:
-            result = chat._wrap_stella_output(msgs)
+            result = chat._wrap_stella(msgs)
             first_line = result[0]["text"].split("\n")[0]
             self.assertEqual("Woof.", first_line, f"First line should be Woof., got: {first_line}")
 
@@ -195,75 +245,49 @@ class KickoffNoTeachingLanguageTests(unittest.TestCase):
         self.banned = ["english", "practice", "lesson", "learn",
                        "expression", "target", "vocabulary", "study"]
 
-    def test_kickoff_without_greeting_mentions_ban(self):
-        """Kickoff without greeting tells model not to use teaching words."""
-        card = {"opening_variants": ["Hey there!"]}
+    def test_kickoff_has_first_turn_rule(self):
+        """Kickoff has FIRST-TURN RULE banning teaching words."""
+        card = {"opening_variants": ["Hey there!"], "world_memory": ["fact one"]}
         kickoff = chat._kickoff_instruction(card, None)
         kickoff_lower = kickoff.lower()
-        # The instruction itself mentions the words (to ban them)
-        # The key is: the instruction EXISTS
-        self.assertIn("first round rule", kickoff_lower)
-        # Verify all banned words are listed in the rule
+        self.assertIn("first-turn rule", kickoff_lower)
         for word in ["english", "practice", "lesson"]:
             self.assertIn(word, kickoff_lower)
 
-    def test_kickoff_with_greeting_mentions_ban(self):
-        """Kickoff with greeting also has the no-teaching rule."""
-        greeting = {"setup": "Hey", "payoff": "Hi", "_idx": 0}
-        kickoff = chat._kickoff_instruction({}, greeting)
-        kickoff_lower = kickoff.lower()
-        self.assertIn("first round rule", kickoff_lower)
-
-    def test_kickoff_with_scene_mentions_ban(self):
-        """Kickoff with scene has the no-teaching rule."""
-        scene = {"situation": "in the kitchen", "setup": "Oh hey, you're just in time!"}
-        kickoff = chat._kickoff_instruction({}, None, scene)
-        kickoff_lower = kickoff.lower()
-        # The ban rule is present (lists forbidden words)
-        self.assertIn("do not say", kickoff_lower)
-        self.assertIn("english", kickoff_lower)
-        self.assertIn("practice", kickoff_lower)
-        self.assertIn("in the kitchen", kickoff_lower)
-
-    def test_kickoff_scene_includes_setup(self):
-        """Scene setup text is passed through to the kickoff."""
-        scene = {"situation": "test situation", "setup": "test opening line here"}
-        kickoff = chat._kickoff_instruction({}, None, scene)
-        self.assertIn("test opening line here", kickoff)
-        self.assertIn("test situation", kickoff)
-
-
-# ── Opening scene selection ──────────────────────────────────────────────────
-
-class OpeningSceneSelectionTests(unittest.TestCase):
-    """_pick_opening_scene selects scenes from card data."""
-
-    def test_picks_scene_when_available(self):
-        """Returns a scene dict when card has opening_scenes."""
+    def test_kickoff_includes_world_memory(self):
+        """Kickoff includes world_memory items as 'Possible pieces of your world'."""
         card = {
-            "opening_scenes": [
-                {"situation": "s1", "setup": "hi 1", "possible_targets": []},
-                {"situation": "s2", "setup": "hi 2", "possible_targets": []},
-            ]
+            "opening_variants": ["Hey there!"],
+            "world_memory": ["fact about job", "fact about family"],
         }
-        result = chat._pick_opening_scene(card)
-        self.assertIsNotNone(result)
-        self.assertIn("situation", result)
+        kickoff = chat._kickoff_instruction(card, None)
+        self.assertIn("Possible pieces of your world", kickoff)
+        self.assertIn("fact about job", kickoff)
+        self.assertIn("fact about family", kickoff)
 
-    def test_returns_none_when_no_scenes(self):
-        """Returns None when card has no opening_scenes."""
-        result = chat._pick_opening_scene({"opening_scenes": []})
-        self.assertIsNone(result)
+    def test_kickoff_includes_opening_variants_as_inspiration(self):
+        """Opening variants are presented as inspiration, not as script."""
+        card = {
+            "opening_variants": ["Sample opening line here"],
+            "world_memory": [],
+        }
+        kickoff = chat._kickoff_instruction(card, None)
+        self.assertIn("inspiration", kickoff.lower())
+        self.assertIn("Sample opening line here", kickoff)
+        self.assertIn("not as a script to repeat verbatim", kickoff)
 
-    def test_returns_none_when_no_card(self):
-        """Returns None when card is None."""
-        result = chat._pick_opening_scene(None)
-        self.assertIsNone(result)
+    def test_kickoff_without_card(self):
+        """Kickoff works with None card."""
+        kickoff = chat._kickoff_instruction(None, None)
+        self.assertIn("FIRST-TURN RULE", kickoff)
+        self.assertIn("Begin as if the learner", kickoff)
 
-    def test_returns_none_when_missing_key(self):
-        """Returns None when card lacks opening_scenes key."""
-        result = chat._pick_opening_scene({})
-        self.assertIsNone(result)
+    def test_kickoff_no_greeting_param_used(self):
+        """The old greeting parameter is accepted but no longer drives logic."""
+        card = {"opening_variants": ["hi"], "world_memory": []}
+        kickoff1 = chat._kickoff_instruction(card, None)
+        kickoff2 = chat._kickoff_instruction(card, greeting=None)
+        self.assertEqual(kickoff1, kickoff2)
 
 
 # ── Sync built-in characters ─────────────────────────────────────────────────
@@ -277,12 +301,9 @@ class SyncBuiltinCharactersTests(unittest.TestCase):
         self.tmp = tempfile.mkdtemp()
         self.db_path = os.path.join(self.tmp, "test.db")
 
-        # Monkey-patch DB_PATH
         self.original_path = characters.DB_PATH
         characters.DB_PATH = self.db_path
 
-        # Also patch settings module if it exists — or create app_settings table
-        # The sync function uses app_settings table
         self.conn = sqlite3.connect(self.db_path)
         self.conn.row_factory = sqlite3.Row
         self.conn.execute("""
@@ -343,7 +364,7 @@ class SyncBuiltinCharactersTests(unittest.TestCase):
             import json
             card = json.loads(row["card_json"])
             self.assertIn("world_memory", card)
-            self.assertIn("opening_scenes", card)
+            self.assertIn("scene_anchors", card)
 
     def test_sync_is_idempotent(self):
         """Running sync twice doesn't duplicate or break anything."""
@@ -391,31 +412,25 @@ class SyncBuiltinCharactersTests(unittest.TestCase):
         """When builtin_card_version is lower, sync updates existing built-ins."""
         from src.characters import sync_builtin_characters
 
-        # First sync
         sync_builtin_characters(self.conn)
         self.conn.commit()
 
-        # Manually change a built-in's display_name
         self.conn.execute(
             "UPDATE characters SET display_name = 'OLD NAME' WHERE key = 'fil'"
         )
-        # Downgrade version to trigger re-sync
         self.conn.execute(
             "UPDATE app_settings SET value = '0' WHERE key = 'builtin_card_version'"
         )
         self.conn.commit()
 
-        # Verify it was changed
         old = self.conn.execute(
             "SELECT display_name FROM characters WHERE key = 'fil'"
         ).fetchone()["display_name"]
         self.assertEqual("OLD NAME", old)
 
-        # Run sync again
         sync_builtin_characters(self.conn)
         self.conn.commit()
 
-        # Should be restored to correct name
         updated = self.conn.execute(
             "SELECT display_name FROM characters WHERE key = 'fil'"
         ).fetchone()["display_name"]
@@ -426,7 +441,7 @@ class SyncBuiltinCharactersTests(unittest.TestCase):
 # ── flatten_card new fields ──────────────────────────────────────────────────
 
 class FlattenCardNewFieldsTests(unittest.TestCase):
-    """flatten_card renders world_memory, signature_situations, opening_scenes."""
+    """flatten_card renders world_memory and scene_anchors."""
 
     def test_flatten_includes_world_memory(self):
         card = {"world_memory": ["fact one", "fact two"]}
@@ -436,36 +451,35 @@ class FlattenCardNewFieldsTests(unittest.TestCase):
         self.assertIn("fact one", flat_lower)
         self.assertIn("fact two", flat_lower)
 
-    def test_flatten_includes_signature_situations(self):
-        card = {"signature_situations": ["doing a thing", "at a place"]}
-        flat = characters.flatten_card("Test", card)
-        flat_lower = flat.lower()
-        self.assertIn("situations", flat_lower)
-        self.assertIn("doing a thing", flat_lower)
-
-    def test_flatten_includes_opening_scenes(self):
-        card = {
-            "opening_scenes": [
-                {"situation": "test situation",
-                 "setup": "test opening setup line",
-                 "possible_targets": ["foo"]},
-            ]
-        }
+    def test_flatten_includes_scene_anchors(self):
+        card = {"scene_anchors": ["doing a thing", "at a place"]}
         flat = characters.flatten_card("Test", card)
         flat_lower = flat.lower()
         self.assertIn("scene", flat_lower)
-        self.assertIn("test situation", flat_lower)
+        self.assertIn("doing a thing", flat_lower)
 
     def test_flatten_empty_new_fields(self):
         """Empty or missing new fields don't crash flatten_card."""
-        # Card with empty lists
-        card = {"world_memory": [], "signature_situations": [], "opening_scenes": []}
+        card = {"world_memory": [], "scene_anchors": []}
         result = characters.flatten_card("Test", card)
         self.assertIsInstance(result, str)
 
-        # Card without any of the new keys
         result2 = characters.flatten_card("Test", {})
         self.assertIsInstance(result2, str)
+
+    def test_flatten_has_no_signature_greetings(self):
+        """flatten_card no longer mentions signature greetings."""
+        card = {"opening_variants": ["hi"]}
+        flat = characters.flatten_card("Test", card)
+        self.assertNotIn("Signature greetings", flat)
+        self.assertNotIn("signature_greetings", flat)
+
+    def test_flatten_has_no_opening_scenes(self):
+        """flatten_card no longer mentions opening scenes."""
+        card = {"opening_variants": ["hi"]}
+        flat = characters.flatten_card("Test", card)
+        self.assertNotIn("opening_scenes", flat)
+        self.assertNotIn("Opening scene", flat)
 
 
 if __name__ == "__main__":

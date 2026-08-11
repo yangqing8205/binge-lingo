@@ -33,19 +33,18 @@ def _fake_card(n=1, openings=1):
         "voice": {
             "pace": "fast", "sentence_length": "short", "vocabulary": "plain",
             "tone": "warm", "emotional_range": "wide",
-            "evidence": {"quote": "q", "confidence": "reconstructed", "source": "s"},
         },
         "signature_moves": [
             {
                 "name": f"Move {i}", "steps": ["a", "b"], "frequency": "often",
-                "evidence": {"quote": "q", "confidence": "reconstructed", "source": "s"},
-                "distinct_because": "specific reason",
             }
             for i in range(n)
         ],
         "format_style": {"caps": "rare", "bold": "rare", "ellipsis": "rare",
                           "exclaim": "rare", "notes": ""},
         "opening_variants": [f"Hey there {i}" for i in range(openings)],
+        "world_memory": ["fact one", "fact two"],
+        "scene_anchors": ["situation one", "situation two"],
         "relationship_style": {"address_terms": ["buddy"], "encouragement_style": "warm",
                                 "teasing_style": "light"},
         "avoid": ["being generic"],
@@ -112,7 +111,7 @@ class CastGenerationTests(unittest.TestCase):
         for item in result:
             self.assertEqual("starter", item["card_tier"])
             self.assertEqual(1, len(item["card"]["signature_moves"]))
-            self.assertTrue(item["persona"])  # flattened prompt text is non-empty
+            self.assertTrue(item["persona"])
 
     def test_generate_cast_for_show_drops_a_failed_character_without_sinking_batch(self):
         selected = [
@@ -155,7 +154,7 @@ class CastGenerationTests(unittest.TestCase):
         self.assertEqual("Wilter White", result["display_name"])
         self.assertEqual({"thinking": {"type": "disabled"}}, captured["extra_body"])
         self.assertIn("card", result)
-        self.assertTrue(result["persona"])  # flatten_card produced prompt text
+        self.assertTrue(result["persona"])
 
 
 class CastRouteTests(unittest.TestCase):

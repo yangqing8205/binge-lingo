@@ -985,150 +985,75 @@ def _feature_injection(card: dict | None, used_names: set[str]) -> str:
     return "\n".join(lines)
 
 
-def _kickoff_instruction(
-    card: dict | None,
-    greeting: dict | None = None,
-    scene: dict | None = None,
-) -> str:
+def _kickoff_instruction(card: dict | None, greeting: dict | None = None) -> str:
     """Build the kickoff instruction for the model.
 
-    Priority for the first model message:
-    1. If a signature_greeting was already sent by the runtime → transition from there
-    2. If an opening_scene is selected → start the conversation inside that scene
-    3. Otherwise → use opening_variants as inspiration
-
-    FIRST-ROUND RULE (always applies to the very first model reply):
-    - Do NOT use any teaching / lesson language: no "English", "practice",
-      "lesson", "learn", "expression", "target", "vocabulary", "study".
-    - Just be the character, in the middle of their life.
-    - The user walked in on something — greet them naturally in-character.
+    FIRST-TURN RULE: do NOT mention English, vocabulary, phrases, expressions,
+    practice, learning, lessons, targets, tests, tutoring, or today's goals.
+    Instead, pick one concrete situation from the character's world and begin
+    in the middle of it. The target expressions are hidden context — never
+    reveal that engineering in the opening.
     """
-    if greeting:
-        base = (
-            "You just opened with your signature greeting. Now, in character, "
-            "transition naturally into the conversation. You're a character in "
-            "the middle of your day — not a teacher starting a lesson. "
-            "Set up a casual little scenario that gives the learner a natural "
-            "opening to speak up. Do NOT repeat the greeting. "
-            "FIRST ROUND RULE: do NOT say 'English', 'practice', 'lesson', "
-            "'learn', 'expression', 'target', 'vocabulary', or 'study'. "
-            "Just talk like the character."
-        )
-        return base
-
-    if scene:
-        base = (
-            "Start the conversation in the middle of this scene — the user just "
-            "walked in on you. Say what you'd naturally say at this moment. "
-            "Do NOT greet like a teacher starting class. "
-            "Do NOT say 'English', 'practice', 'lesson', 'learn', 'expression', "
-            "'target', 'vocabulary', or 'study'. "
-            "Just be the character, already in the middle of something.\n\n"
-            f"Scene: {scene.get('situation', '')}\n"
-            f"Your opening line (adapt, don't recite verbatim): {scene.get('setup', '')}"
-        )
-        return base
-
-    base = (
-        "Start the conversation now. In character, greet the learner and set up a "
-        "casual little scenario that gives them a natural opening to speak up. "
-        "FIRST ROUND RULE: do NOT say 'English', 'practice', 'lesson', "
-        "'learn', 'expression', 'target', 'vocabulary', or 'study'. "
-        "Do not sound like a teacher. Sound like the character."
-    )
     openings = (card or {}).get("opening_variants") or []
+    memories = (card or {}).get("world_memory") or []
+
+    base = """
+Begin as if the learner has casually entered your real life.
+
+FIRST-TURN RULE:
+Do NOT mention English, vocabulary, phrases, expressions, practice,
+learning, lessons, targets, tests, tutoring, or today's goals.
+
+Instead:
+1. Pick ONE concrete situation, relationship, obsession, memory,
+   problem, or running gag from your own world.
+2. Begin in the middle of that situation.
+3. Speak as the character would naturally speak about it.
+4. Give the other person something easy and human to react to.
+5. Keep it to 1-4 sentences.
+
+The target expressions are hidden context for where the conversation
+may eventually go. Do NOT reveal that engineering in the opening.
+"""
+
+    if memories:
+        base += "\nPossible pieces of your world:\n- " + "\n- ".join(memories)
+
     if openings:
         base += (
-            "\n\nFor how you kick things off, take inspiration from this in-character "
-            "opening move (adapt it to the moment, don't recite it verbatim): "
+            "\n\nUse this only as inspiration for the type of scene, "
+            "not as a script to repeat verbatim:\n"
             + random.choice(openings)
         )
+
     return base
 
 
-def _pick_opening_scene(card: dict | None) -> dict | None:
-    """Pick a random opening_scene from the card, if any are available.
-
-    Returns the scene dict or None. Opening scenes are the preferred way to
-    start a conversation — they drop the user into the show's world instead
-    of a generic "let's practice English" opener.
-    """
-    if not card:
-        return None
-    scenes = card.get("opening_scenes") or []
-    if not scenes:
-        return None
-    return random.choice(scenes)
-
-
-def _wrap_stella_output(messages: list[dict]) -> list[dict]:
+def _wrap_stella(messages: list[dict]) -> list[dict]:
     """Force Stella/animal-character output into the 'Woof. (Translation: ...)' format.
 
-    The model generates the meaning; we wrap it so line 1 is the animal sound
-    and line 2 is the translation. This guarantees the format even if the model
-    ignores the prompt instructions.
+    The model is instructed to produce ONLY the semantic meaning of the bark
+    (no 'Woof', no 'Translation:'). We strip any accidental wrapper the model
+    might still generate, then re-wrap consistently so the UI always shows:
+      Woof.
+      (Translation: ...)
     """
     if not messages:
-        return messages
-    # Take the text content of all messages, join them
-    raw_text = " ".join(m.get("text", "") for m in messages).strip()
-    if not raw_text:
-        return messages
-    # If it's already in the right format, leave it alone
-    if raw_text.startswith("Woof.") and "(Translation:" in raw_text:
-        return messages
-    # Otherwise, wrap it
-    wrapped = f"Woof.\n(Translation: {raw_text})"
-    return [{"text": wrapped}]
+        return [{"text": "Woof.\n(Translation: ...)", "pause_before_ms": 0}]
 
+    raw = " ".join(m.get("text", "") for m in messages).strip()
 
-# Probability of using a signature greeting when one is available.
-# Not 1.0 -- we want natural variation, not forced greetings.
-_SIGNATURE_GREETING_CHANCE = 0.55
+    # Model is instructed to produce semantic meaning only.
+    # Clean accidental wrapper if it still generated one.
+    raw = raw.removeprefix("Woof.").strip()
+    raw = raw.removeprefix("Woof!").strip()
+    if raw.startswith("(Translation:") and raw.endswith(")"):
+        raw = raw[len("(Translation:"):-1].strip()
 
-
-def _pick_signature_greeting(card: dict | None, used_greetings: set[int]) -> dict | None:
-    """Select a high-confidence signature greeting probabilistically.
-
-    Returns the greeting dict (with its index stored as `_idx`) or None.
-    Only considers high-confidence greetings not yet used this session.
-    """
-    greetings = (card or {}).get("signature_greetings") or []
-    if not greetings:
-        return None
-
-    high_conf = [
-        (i, g) for i, g in enumerate(greetings)
-        if g.get("confidence") == "high" and i not in used_greetings
-    ]
-    if not high_conf:
-        return None
-
-    if random.random() > _SIGNATURE_GREETING_CHANCE:
-        return None
-
-    idx, chosen = random.choice(high_conf)
-    result = dict(chosen)
-    result["_idx"] = idx
-    return result
-
-
-def _greeting_to_messages(greeting: dict) -> list[dict]:
-    """Convert a signature greeting into sequential frontend messages.
-
-    setup -> pause_before_ms -> payoff, preserving the structure.
-    """
-    messages = []
-    setup = (greeting.get("setup") or "").strip()
-    payoff = (greeting.get("payoff") or "").strip()
-
-    if setup:
-        messages.append({"text": setup, "pause_before_ms": 0})
-    if payoff:
-        pause = 900 if setup else 0
-        messages.append({"text": payoff, "pause_before_ms": pause})
-
-    return messages
+    return [{
+        "text": f"Woof.\n(Translation: {raw})",
+        "pause_before_ms": 0,
+    }]
 
 
 def _join_reply_text(messages: list[dict]) -> str:
@@ -1141,10 +1066,10 @@ def _join_reply_text(messages: list[dict]) -> str:
 def start_session(character_key: str, expressions: list[str]) -> dict:
     """Create a session, choose target expressions, and get the opening line.
 
-    If the character has high-confidence unused signature_greetings, one may be
-    selected probabilistically and rendered as sequential setup/payoff messages
-    before the model-generated opening. Otherwise, the model generates the
-    opening from opening_variants as before.
+    The opening is generated by the model using kickoff instructions that
+    pull from the character's world_memory and opening_variants — the first
+    turn sounds like a character in the middle of their life, not a teacher
+    starting a lesson.
     """
     char = characters.get(character_key)
     if not char:
@@ -1156,30 +1081,22 @@ def start_session(character_key: str, expressions: list[str]) -> dict:
     system = _system_prompt(char["persona"], targets)
     card = char.get("card")
     used_moves: set[str] = set()
-    used_greetings: set[int] = set()
 
-    # Pick a signature greeting (probabilistic)
-    greeting = _pick_signature_greeting(card, used_greetings)
-    greeting_messages: list[dict] = []
+    # Stella: add the special instruction so model generates meaning only
+    if character_key == "stella":
+        system += (
+            "\n\nFor Stella, generate ONLY the meaning of the bark. "
+            "Do not write 'Woof' yourself. "
+            "Do not write 'Translation:'. "
+            "One short sentence only."
+        )
 
-    if greeting is not None:
-        used_greetings.add(greeting["_idx"])
-        greeting_messages = _greeting_to_messages(greeting)
-
-    # Pick an opening scene (only if no greeting was used — greeting already has a setup)
-    scene = None
-    if greeting is None:
-        scene = _pick_opening_scene(card)
-
-    kickoff = _kickoff_instruction(card, greeting, scene) + _feature_injection(card, used_moves)
+    kickoff = _kickoff_instruction(card) + _feature_injection(card, used_moves)
     model_messages = _call_model_reply(system, [{"role": "user", "content": kickoff}])
 
     # Stella / animal-character: force output format
     if character_key == "stella":
-        model_messages = _wrap_stella_output(model_messages)
-
-    # Concatenate: greeting messages (if any) + model's continuation
-    messages = greeting_messages + model_messages
+        model_messages = _wrap_stella(model_messages)
 
     _sessions[session_id] = {
         "character": character_key,
@@ -1187,17 +1104,16 @@ def start_session(character_key: str, expressions: list[str]) -> dict:
         "system": system,
         "card": card,
         "used_moves": used_moves,
-        "used_greetings": used_greetings,
         "targets": targets,
         # Full turn history (user/assistant). The kickoff instruction is not
         # stored so it doesn't leak into later context.
-        "history": [{"role": "assistant", "content": _join_reply_text(messages)}],
+        "history": [{"role": "assistant", "content": _join_reply_text(model_messages)}],
     }
     return {
         "session_id": session_id,
         "character": character_key,
         "targets": targets,
-        "messages": messages,
+        "messages": model_messages,
     }
 
 
@@ -1212,7 +1128,7 @@ def turn(session_id: str, message: str) -> dict:
 
     # Stella / animal-character: force output format on every turn
     if sess["character"] == "stella":
-        messages = _wrap_stella_output(messages)
+        messages = _wrap_stella(messages)
 
     sess["history"].append({"role": "assistant", "content": _join_reply_text(messages)})
 
