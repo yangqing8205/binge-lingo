@@ -256,6 +256,47 @@ def api_today_count():
 
 # ---- 对话练习 (roleplay conversation practice) ----
 
+@app.get("/api/health")
+@_require_auth_json
+def api_health():
+    """Quick health check — pings the model API to confirm it's reachable."""
+    import time
+    from src import chat, config
+    from openai import OpenAI
+    client = OpenAI(
+        base_url=config.API_BASE_URL,
+        api_key=config.API_KEY,
+        timeout=15.0,
+        max_retries=0,
+    )
+    t0 = time.time()
+    try:
+        resp = client.chat.completions.create(
+            model=config.API_MODEL,
+            max_tokens=5,
+            temperature=0,
+            messages=[{"role": "user", "content": "hi"}],
+        )
+        elapsed = round(time.time() - t0, 2)
+        usage = resp.usage.model_dump() if resp.usage else {}
+        return jsonify({
+            "ok": True,
+            "api": "reachable",
+            "model": config.API_MODEL,
+            "latency_sec": elapsed,
+            "usage": usage,
+        })
+    except Exception as e:
+        elapsed = round(time.time() - t0, 2)
+        return jsonify({
+            "ok": False,
+            "api": "unreachable",
+            "model": config.API_MODEL,
+            "latency_sec": elapsed,
+            "error": type(e).__name__ + ": " + str(e)[:200],
+        }), 502
+
+
 @app.get("/api/characters")
 def api_characters():
     """`?show=` filters to that show's cast; omitted = every character."""
