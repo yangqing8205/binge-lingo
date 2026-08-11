@@ -257,7 +257,6 @@ def api_today_count():
 # ---- 对话练习 (roleplay conversation practice) ----
 
 @app.get("/api/health")
-@_require_auth_json
 def api_health():
     """Quick health check — pings the model API to confirm it's reachable."""
     import time
