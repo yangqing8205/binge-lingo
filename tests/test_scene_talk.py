@@ -270,11 +270,35 @@ class KickoffNoTeachingLanguageTests(unittest.TestCase):
         card = {
             "opening_variants": ["Sample opening line here"],
             "world_memory": [],
+            "signature_moves": [],
         }
         kickoff = chat._kickoff_instruction(card, None)
         self.assertIn("inspiration", kickoff.lower())
         self.assertIn("Sample opening line here", kickoff)
-        self.assertIn("not as a script to repeat verbatim", kickoff)
+        self.assertIn("don't recite verbatim", kickoff.lower())
+
+
+    def test_kickoff_includes_signature_moves(self):
+        """Kickoff includes signature moves so the opening uses the character's voice."""
+        card = {
+            "opening_variants": ["hi"],
+            "world_memory": [],
+            "signature_moves": [
+                {"name": "Fact then sting", "steps": ["Give fact", "Make dry observation"], "frequency": "often"},
+                {"name": "Overachiever panic", "steps": ["Discover not best", "Panic"], "frequency": "sometimes"},
+            ],
+        }
+        kickoff = chat._kickoff_instruction(card, None)
+        self.assertIn("signature moves", kickoff.lower())
+        self.assertIn("Fact then sting", kickoff)
+        self.assertIn("lean into", kickoff.lower())
+
+    def test_kickoff_without_moves_still_works(self):
+        """Kickoff works fine when there are no signature moves."""
+        card = {"opening_variants": ["hi"], "world_memory": ["fact one"]}
+        kickoff = chat._kickoff_instruction(card, None)
+        self.assertIn("FIRST-TURN RULE", kickoff)
+        self.assertIn("fact one", kickoff)
 
     def test_kickoff_without_card(self):
         """Kickoff works with None card."""

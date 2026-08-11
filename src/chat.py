@@ -997,11 +997,14 @@ def _kickoff_instruction(card: dict | None, greeting: dict | None = None) -> str
     FIRST-TURN RULE: do NOT mention English, vocabulary, phrases, expressions,
     practice, learning, lessons, targets, tests, tutoring, or today's goals.
     Instead, pick one concrete situation from the character's world and begin
-    in the middle of it. The target expressions are hidden context — never
-    reveal that engineering in the opening.
+    in the middle of it. Lean into the character's signature moves so the
+    voice is instantly recognizable. The target expressions are hidden
+    context — never reveal that engineering in the opening.
     """
-    openings = (card or {}).get("opening_variants") or []
-    memories = (card or {}).get("world_memory") or []
+    card = card or {}
+    openings = card.get("opening_variants") or []
+    memories = card.get("world_memory") or []
+    moves = card.get("signature_moves") or []
 
     base = """
 Begin as if the learner has casually entered your real life.
@@ -1014,7 +1017,8 @@ Instead:
 1. Pick ONE concrete situation, relationship, obsession, memory,
    problem, or running gag from your own world.
 2. Begin in the middle of that situation.
-3. Speak as the character would naturally speak about it.
+3. Lean into your signature way of speaking — don't just tell a story,
+   say it the way ONLY this character would say it.
 4. Give the other person something easy and human to react to.
 5. Keep it to 1-4 sentences.
 
@@ -1022,13 +1026,27 @@ The target expressions are hidden context for where the conversation
 may eventually go. Do NOT reveal that engineering in the opening.
 """
 
+    if moves:
+        move_lines = []
+        for m in moves[:3]:  # top 3 most frequent/important
+            name = m.get("name", "")
+            steps = " → ".join(m.get("steps") or [])
+            if name:
+                move_lines.append(f"- {name}: {steps}")
+        if move_lines:
+            base += (
+                "\n\nYour signature moves — lean into at least one of these "
+                "in how you say it (don't name the move, just use it):\n"
+                + "\n".join(move_lines)
+            )
+
     if memories:
-        base += "\nPossible pieces of your world:\n- " + "\n- ".join(memories)
+        base += "\n\nPossible pieces of your world:\n- " + "\n- ".join(memories)
 
     if openings:
         base += (
-            "\n\nUse this only as inspiration for the type of scene, "
-            "not as a script to repeat verbatim:\n"
+            "\n\nOpening-variant inspiration (adapt the vibe, don't recite "
+            "verbatim):\n"
             + random.choice(openings)
         )
 
