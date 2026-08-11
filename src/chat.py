@@ -152,6 +152,14 @@ HARD RULES (apply to every feature you write, for any show or character):
      character signature. When in doubt, use "medium" or omit it.
    - NEVER invent a fake "classic" greeting just to fill the field.
    - A generic "Hey buddy, great to see you!" is NOT a signature greeting.
+
+7. WORLD MEMORY AND SCENE WORK. The character must feel like they live in the
+   show's world, not in an English classroom. `world_memory` stores concrete
+   facts (events, relationships, jobs, locations, conflicts) -- NOT personality
+   descriptions. `opening_scenes` are mini scene setups where the conversation
+   STARTS already in the middle of something -- like walking into an episode.
+   The first thing the character says should NEVER sound like a teacher starting
+   a lesson. It should sound like a character in the middle of their life.
 """
 
 _EVIDENCE_SCHEMA = {
@@ -280,6 +288,55 @@ _CARD_SCHEMA_PROPERTIES = {
             "required": ["setup", "payoff", "usage", "confidence", "why_distinctive"],
         },
     },
+    "world_memory": {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": "Concrete facts about this character's world — events, "
+        "relationships, habits, locations, long-running conflicts, jobs, hobbies. "
+        "These are plot/scene materials the character can reference naturally, "
+        "NOT personality traits. Each entry should be something a fan would "
+        "recognise. Example: 'sells real estate and does magic tricks at open houses'.",
+    },
+    "signature_situations": {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": "Recurring scenarios or situations this character is often "
+        "found in. These are scene setups the runtime can use to ground a "
+        "conversation in the show's world rather than generic English practice. "
+        "Example: 'in the middle of an open house', 'fixing something around the house'.",
+    },
+    "opening_scenes": {
+        "type": "array",
+        "description": "Ready-to-use opening scene starters. Each one is a mini "
+        "scene setup the character can walk into the conversation already in the "
+        "middle of — like dropping the learner into an episode. The runtime picks "
+        "one at session start instead of a generic 'let's practice English' opener.",
+        "items": {
+            "type": "object",
+            "properties": {
+                "situation": {
+                    "type": "string",
+                    "description": "What's happening when the conversation starts — "
+                    "a one-sentence scene setup, like 'you just walked in on me "
+                    "mid-magic-trick'.",
+                },
+                "setup": {
+                    "type": "string",
+                    "description": "The character's opening line(s) for this scene. "
+                    "Should sound like the character is already in the middle of "
+                    "something when the learner arrives. No teaching language.",
+                },
+                "possible_targets": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": "Hints for which English expressions might "
+                    "naturally come up in this scene. Not mandatory — just cues "
+                    "so the runtime can guide target selection.",
+                },
+            },
+            "required": ["situation", "setup", "possible_targets"],
+        },
+    },
     "relationship_style": {
         "type": "object",
         "description": "How this character relates to the learner they're chatting with.",
@@ -325,10 +382,12 @@ Return your result by calling the `report_persona` tool with these fields:
   the built-ins: "I've got a Fil-osophy for every situation. You're welcome."
 
 - card: the structured card (voice, signature_moves, format_style,
-  opening_variants, signature_greetings, relationship_style, avoid) — this is a single, complete
+  opening_variants, signature_greetings, world_memory, signature_situations,
+  opening_scenes, relationship_style, avoid) — this is a single, complete
   card, so aim for 2-4 signature_moves, 2-3 opening_variants,
-  and 0-3 signature_greetings (only when you have reliable evidence -- empty list
-  is the safe default for most characters).
+  0-3 signature_greetings (only when you have reliable evidence -- empty list
+  is the safe default for most characters), 5-10 world_memory entries,
+  3-5 signature_situations, and 2-4 opening_scenes.
 """
 
 _PERSONA_TOOL = {
@@ -815,6 +874,10 @@ avoid as they are unless you spot a real problem, but:
 - Add signature_greetings: 0-3 entries, ONLY when you have reliable evidence
   of a recognisable character-specific greeting behaviour. Empty list is the
   safe default. Follow the same evidence rules as signature_moves.
+- Expand world_memory to 5-10 concrete facts (events, relationships, habits,
+  locations, long-running conflicts, jobs, hobbies).
+- Expand signature_situations to 3-5 recurring scenes.
+- Add 2-4 opening_scenes -- each with situation + setup + possible_targets.
 
 {_CARD_HARD_RULES}
 
@@ -922,27 +985,56 @@ def _feature_injection(card: dict | None, used_names: set[str]) -> str:
     return "\n".join(lines)
 
 
-def _kickoff_instruction(card: dict | None, greeting: dict | None = None) -> str:
+def _kickoff_instruction(
+    card: dict | None,
+    greeting: dict | None = None,
+    scene: dict | None = None,
+) -> str:
     """Build the kickoff instruction for the model.
 
-    If a signature_greeting was selected, the runtime has already rendered it
-    as sequential messages and the model is asked to continue from there.
-    Otherwise, the model generates the opening from opening_variants.
+    Priority for the first model message:
+    1. If a signature_greeting was already sent by the runtime → transition from there
+    2. If an opening_scene is selected → start the conversation inside that scene
+    3. Otherwise → use opening_variants as inspiration
+
+    FIRST-ROUND RULE (always applies to the very first model reply):
+    - Do NOT use any teaching / lesson language: no "English", "practice",
+      "lesson", "learn", "expression", "target", "vocabulary", "study".
+    - Just be the character, in the middle of their life.
+    - The user walked in on something — greet them naturally in-character.
     """
     if greeting:
         base = (
             "You just opened with your signature greeting. Now, in character, "
-            "transition naturally into the conversation. Set up a casual little "
-            "scenario that gives the learner a natural opening to use one of the "
-            "target expressions. Do not mention the expressions or that this is a test. "
-            "Do NOT repeat the greeting."
+            "transition naturally into the conversation. You're a character in "
+            "the middle of your day — not a teacher starting a lesson. "
+            "Set up a casual little scenario that gives the learner a natural "
+            "opening to speak up. Do NOT repeat the greeting. "
+            "FIRST ROUND RULE: do NOT say 'English', 'practice', 'lesson', "
+            "'learn', 'expression', 'target', 'vocabulary', or 'study'. "
+            "Just talk like the character."
+        )
+        return base
+
+    if scene:
+        base = (
+            "Start the conversation in the middle of this scene — the user just "
+            "walked in on you. Say what you'd naturally say at this moment. "
+            "Do NOT greet like a teacher starting class. "
+            "Do NOT say 'English', 'practice', 'lesson', 'learn', 'expression', "
+            "'target', 'vocabulary', or 'study'. "
+            "Just be the character, already in the middle of something.\n\n"
+            f"Scene: {scene.get('situation', '')}\n"
+            f"Your opening line (adapt, don't recite verbatim): {scene.get('setup', '')}"
         )
         return base
 
     base = (
         "Start the conversation now. In character, greet the learner and set up a "
-        "casual little scenario that gives them a natural opening to use one of the "
-        "target expressions. Do not mention the expressions or that this is a test."
+        "casual little scenario that gives them a natural opening to speak up. "
+        "FIRST ROUND RULE: do NOT say 'English', 'practice', 'lesson', "
+        "'learn', 'expression', 'target', 'vocabulary', or 'study'. "
+        "Do not sound like a teacher. Sound like the character."
     )
     openings = (card or {}).get("opening_variants") or []
     if openings:
@@ -952,6 +1044,42 @@ def _kickoff_instruction(card: dict | None, greeting: dict | None = None) -> str
             + random.choice(openings)
         )
     return base
+
+
+def _pick_opening_scene(card: dict | None) -> dict | None:
+    """Pick a random opening_scene from the card, if any are available.
+
+    Returns the scene dict or None. Opening scenes are the preferred way to
+    start a conversation — they drop the user into the show's world instead
+    of a generic "let's practice English" opener.
+    """
+    if not card:
+        return None
+    scenes = card.get("opening_scenes") or []
+    if not scenes:
+        return None
+    return random.choice(scenes)
+
+
+def _wrap_stella_output(messages: list[dict]) -> list[dict]:
+    """Force Stella/animal-character output into the 'Woof. (Translation: ...)' format.
+
+    The model generates the meaning; we wrap it so line 1 is the animal sound
+    and line 2 is the translation. This guarantees the format even if the model
+    ignores the prompt instructions.
+    """
+    if not messages:
+        return messages
+    # Take the text content of all messages, join them
+    raw_text = " ".join(m.get("text", "") for m in messages).strip()
+    if not raw_text:
+        return messages
+    # If it's already in the right format, leave it alone
+    if raw_text.startswith("Woof.") and "(Translation:" in raw_text:
+        return messages
+    # Otherwise, wrap it
+    wrapped = f"Woof.\n(Translation: {raw_text})"
+    return [{"text": wrapped}]
 
 
 # Probability of using a signature greeting when one is available.
@@ -1030,7 +1158,7 @@ def start_session(character_key: str, expressions: list[str]) -> dict:
     used_moves: set[str] = set()
     used_greetings: set[int] = set()
 
-    # Try to pick a signature greeting
+    # Pick a signature greeting (probabilistic)
     greeting = _pick_signature_greeting(card, used_greetings)
     greeting_messages: list[dict] = []
 
@@ -1038,8 +1166,17 @@ def start_session(character_key: str, expressions: list[str]) -> dict:
         used_greetings.add(greeting["_idx"])
         greeting_messages = _greeting_to_messages(greeting)
 
-    kickoff = _kickoff_instruction(card, greeting) + _feature_injection(card, used_moves)
+    # Pick an opening scene (only if no greeting was used — greeting already has a setup)
+    scene = None
+    if greeting is None:
+        scene = _pick_opening_scene(card)
+
+    kickoff = _kickoff_instruction(card, greeting, scene) + _feature_injection(card, used_moves)
     model_messages = _call_model_reply(system, [{"role": "user", "content": kickoff}])
+
+    # Stella / animal-character: force output format
+    if character_key == "stella":
+        model_messages = _wrap_stella_output(model_messages)
 
     # Concatenate: greeting messages (if any) + model's continuation
     messages = greeting_messages + model_messages
@@ -1072,6 +1209,11 @@ def turn(session_id: str, message: str) -> dict:
     sess["history"].append({"role": "user", "content": message})
     system = sess["system"] + _feature_injection(sess["card"], sess["used_moves"])
     messages = _call_model_reply(system, sess["history"])
+
+    # Stella / animal-character: force output format on every turn
+    if sess["character"] == "stella":
+        messages = _wrap_stella_output(messages)
+
     sess["history"].append({"role": "assistant", "content": _join_reply_text(messages)})
 
     user_turns = sum(1 for m in sess["history"] if m["role"] == "user")
