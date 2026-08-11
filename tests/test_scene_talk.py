@@ -290,6 +290,32 @@ class KickoffNoTeachingLanguageTests(unittest.TestCase):
         self.assertEqual(kickoff1, kickoff2)
 
 
+
+
+# ── Teaching template: character never says targets ───────────────────────────
+
+class CharacterNeverSaysTargetsTests(unittest.TestCase):
+    """The teaching template explicitly forbids the character from saying targets."""
+
+    def test_template_says_never_say_targets(self):
+        """Teaching template has ABSOLUTE RULE: never say target expressions yourself."""
+        from src.chat import _TEACHING_TEMPLATE
+        template = _TEACHING_TEMPLATE.format(targets='"phrase one", "phrase two"')
+        lower = template.lower()
+        self.assertIn('never say', lower)
+        self.assertIn('target expressions yourself', lower)
+        self.assertIn('learner says them', lower)
+        self.assertIn('paraphrase', lower)
+
+    def test_template_says_not_even_once(self):
+        """Template emphasizes not even once, not as quote/example."""
+        from src.chat import _TEACHING_TEMPLATE
+        template = _TEACHING_TEMPLATE.format(targets='"x"')
+        lower = template.lower()
+        self.assertIn('not even once', lower)
+        self.assertIn('not as a quote', lower)
+        self.assertIn('not as an example', lower)
+
 # ── Sync built-in characters ─────────────────────────────────────────────────
 
 class SyncBuiltinCharactersTests(unittest.TestCase):
