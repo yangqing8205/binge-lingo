@@ -278,18 +278,24 @@ def api_health():
         )
         elapsed = round(time.time() - t0, 2)
         usage = resp.usage.model_dump() if resp.usage else {}
+        from urllib.parse import urlparse
+        parsed = urlparse(config.API_BASE_URL)
         return jsonify({
             "ok": True,
             "api": "reachable",
+            "provider": parsed.netloc,
             "model": config.API_MODEL,
             "latency_sec": elapsed,
             "usage": usage,
         })
     except Exception as e:
         elapsed = round(time.time() - t0, 2)
+        from urllib.parse import urlparse
+        parsed = urlparse(config.API_BASE_URL)
         return jsonify({
             "ok": False,
             "api": "unreachable",
+            "provider": parsed.netloc,
             "model": config.API_MODEL,
             "latency_sec": elapsed,
             "error": type(e).__name__ + ": " + str(e)[:200],
