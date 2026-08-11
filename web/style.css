@@ -935,6 +935,23 @@ body {
   border-bottom-right-radius: 4px;
 }
 .bubble.typing { color: var(--gray); font-style: italic; background: #f1ece0; }
+.bubble.error {
+  background: #fff5f5;
+  border-color: #e8c0c0;
+  color: #8a4a4a;
+}
+.bubble.error .retry-btn {
+  margin-top: 8px;
+  padding: 6px 14px;
+  background: var(--accent);
+  color: var(--cream);
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  cursor: pointer;
+  font-family: var(--font-body);
+}
+.bubble.error .retry-btn:hover { opacity: 0.9; }
 
 .chat-inputbar {
   margin-top: 14px;

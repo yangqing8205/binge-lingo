@@ -35,8 +35,8 @@ from . import characters, config, matching
 _client = OpenAI(
     base_url=config.API_BASE_URL,
     api_key=config.API_KEY,
-    timeout=90.0,
-    max_retries=0,
+    timeout=45.0,
+    max_retries=2,
 )
 
 _NO_THINKING = {"thinking": {"type": "disabled"}}
@@ -1304,18 +1304,45 @@ def _call_model_reply(system: str, messages: list[dict]) -> list[dict]:
     """One model call for an in-character turn. Returns the frontend-facing
     message list: [{"text": str, "pause_before_ms": int}, ...]. Falls back to
     a single plain-text message if the tool call is missing/malformed, so a
-    parsing hiccup degrades to today's single-bubble behavior rather than
-    breaking the turn.
+    parsing hiccup degrades to single-bubble behavior rather than breaking
+    the turn.
+
+    The OpenAI client already handles retries (max_retries=2). If all retries
+    fail (network error, timeout, 5xx), we raise so the caller can decide
+    what to do — but for timeouts specifically we try once more without
+    tool calling (plain text), as a last-resort graceful degradation.
     """
-    resp = _client.chat.completions.create(
-        model=config.API_MODEL,
-        max_tokens=700,
-        temperature=0.9,
-        extra_body=_NO_THINKING,
-        tools=[_REPLY_TOOL],
-        tool_choice={"type": "function", "function": {"name": "report_reply"}},
-        messages=[{"role": "system", "content": system}, *messages],
-    )
+    try:
+        resp = _client.chat.completions.create(
+            model=config.API_MODEL,
+            max_tokens=700,
+            temperature=0.9,
+            extra_body=_NO_THINKING,
+            tools=[_REPLY_TOOL],
+            tool_choice={"type": "function", "function": {"name": "report_reply"}},
+            messages=[{"role": "system", "content": system}, *messages],
+        )
+    except Exception as exc:
+        # Tool-call call failed entirely. Try one plain-text fallback before
+        # giving up — this often succeeds when tool calling times out but a
+        # short direct reply doesn't.
+        import time as _time
+        _time.sleep(0.5)  # brief breath
+        try:
+            resp = _client.chat.completions.create(
+                model=config.API_MODEL,
+                max_tokens=300,
+                temperature=0.9,
+                extra_body=_NO_THINKING,
+                messages=[{"role": "system", "content": system}, *messages],
+            )
+            text = (resp.choices[0].message.content or "").strip()
+            if text:
+                return [{"text": text, "pause_before_ms": 0}]
+        except Exception:
+            pass  # fall through to re-raise the original error
+        raise exc
+
     tool_calls = resp.choices[0].message.tool_calls or []
     for call in tool_calls:
         if call.function.name == "report_reply":
