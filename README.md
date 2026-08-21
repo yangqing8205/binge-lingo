@@ -1,270 +1,267 @@
-# BingeLingo
+# BingeLingo｜把"看懂了"变成"说得出来"
 
-<div align="right">
-  <strong>English</strong> | <a href="./README_CN.md">简体中文</a>
-</div>
+BingeLingo 是一个围绕影视英语学习设计的 AI 产品。
 
-**Turn subtitle screenshots into a reusable English learning loop — capture
-expressions, review them in context, and practise through character conversations.**
+它从一个很常见的学习习惯开始：
 
-[Portfolio](https://yangqingportfolio.com.cn) · Personal MVP · macOS-first capture workflow
+**看剧时遇到一句很地道的表达，截图、查意思、觉得自己记住了——但下一次真正想说的时候，还是想不起来。**
 
-BingeLingo is an independent AI product experiment for English learners who want
-to turn expressions from shows into language they can actively use. It starts with
-a familiar habit—saving a subtitle screenshot—and carries the expression beyond
-collection into contextual recall and speaking practice.
+BingeLingo 想解决的，正是从"我见过这个表达"到"我能够主动使用它"之间的距离。
 
-## Why I built it
+它把原本分散的几个动作连接成一条学习闭环：
 
-English learners often understand an idiom, phrasal verb, collocation, or slang
-expression while watching a show but cannot retrieve it when speaking. Screenshots
-accumulate, AI explanations disappear into chat history, and manually organizing
-examples interrupts the viewing experience. BingeLingo connects those fragmented
-steps into one workflow aimed at the gap between recognition and active use.
+**截图捕捉 → AI 提取表达 → 情境回忆 → 角色对话 → 主动使用**
 
-## Product workflow
+## 在线体验
 
-```text
-Subtitle screenshot
-        ↓
-Multimodal expression extraction
-        ↓
-Notion knowledge card + original image evidence
-        ↓
-Contextual Revision with progressive hints
-        ↓
-Scene Talk character conversation
-        ↓
-Practice to Go prompt for another AI chat tool
-```
+👉 `https://binge-lingo.onrender.com/`
 
-## Core features
+> Render 免费实例可能存在冷启动，首次打开时需要稍等片刻。
 
-### 1. Screenshot capture and expression extraction
+## 为什么做 BingeLingo
 
-- A macOS watcher monitors a dedicated screenshot folder.
-- A vision-capable model is called through the OpenAI Python SDK and an
-  OpenAI-compatible Chat Completions endpoint.
-- The extraction prompt focuses on useful expressions that are easy to recognize
-  but harder to produce naturally: idioms, phrasal verbs, fixed collocations,
-  slang, and tone-carrying colloquialisms.
-- Tool Calling returns structured fields instead of relying on free-form text.
-- Each Notion entry stores meaning, context, original subtitle, difficulty,
-  review sentence, collocation frame, show, episode, and the source screenshot.
+看英文剧时，我们经常会遇到一些特别想记住的表达：
 
-### 2. Revision
+一个俚语、一个短语动词、一种很自然的搭配，或者一句角色说出来特别有语气的表达。
 
-Revision uses a progressive recall flow rather than the early three-mode design:
+最常见的做法是截图。
 
-1. Recall the expression from a newly generated conversational context.
-2. Try again with Chinese meaning and initial-letter hints.
-3. Reveal the answer, usage details, collocation frame, original line, and screenshot.
+然后查一下意思，可能顺手问问 AI，再把截图留在相册里。
 
-Attempts are recorded in local SQLite with result type, elapsed time, history,
-today's count, and first-try accuracy. This is currently a recording layer, not
-a complete spaced-repetition scheduler.
+问题是，这套流程很容易停在"收藏"。
 
-### 3. Scene Talk
+截图越来越多，AI 的解释沉进聊天记录里，真正说英语时，却还是只能认出来，想不起来。
 
-- Generate or select show-based character personas.
-- Practise target expressions through short roleplay conversations.
-- The character creates natural openings without directly revealing which phrase
-  the learner should use.
-- End each session with a short usage debrief.
-- Character records are stored in SQLite; active sessions remain in process memory.
+我发现真正缺少的不是更多解释，而是：
 
-### 4. Practice to Go
+**让一个表达在不同情境里被反复主动调取。**
 
-Choose a character, target expressions, conversation length, guidance level,
-setting, correction style, and response language. BingeLingo assembles a portable
-prompt that can be pasted into ChatGPT, Doubao, Kimi, Claude, or another AI chat
-tool. This module builds the prompt locally and does not make another model call.
+于是 BingeLingo 把一次字幕截图，变成了一条完整的学习路径。
 
-### 5. Show-based organization
+## 从截图到主动使用
 
-The watcher asks for the current show and episode, saves them into Notion, and
-organizes screenshots by show. Revision, Scene Talk, and Practice to Go share a
-current-show switcher.
+### 01｜Capture：先把值得学的表达留下来
 
-## Architecture
+用户截下字幕画面后，AI 会识别其中值得学习的表达，例如：
+
+* idiom
+* phrasal verb
+* collocation
+* slang
+* 带有明显语气和使用场景的口语表达
+
+系统不仅保存释义，还会记录原句、上下文、剧集信息和截图本身。
+
+这样，表达不会脱离它第一次出现的真实语境。
+
+### 02｜Revision：不是"再看一遍"，而是尝试回忆
+
+传统单词卡常常先展示答案。
+
+BingeLingo 的复习从新的对话情境开始，让用户先尝试主动想起原表达。
+
+如果想不起来，再逐步提供：
+
+**语义提示 → 首字母提示 → 完整答案与原始语境**
+
+核心不是判断"认识不认识"，而是训练：
+
+**在需要表达一个意思的时候，能不能把它从记忆里调出来。**
+
+### 03｜Scene Talk：把表达放回真实对话
+
+记住一个表达并不意味着会用。
+
+因此 BingeLingo 会基于影视角色生成短对话，让用户在角色互动中寻找自然使用目标表达的机会。
+
+角色不会直接告诉用户"现在请使用某个词组"，而是创造一个适合它出现的情境。
+
+学习从：
+
+**"这句话是什么意思？"**
+
+进一步变成：
+
+**"在什么情况下，我会自然地说出这句话？"**
+
+### 04｜Practice to Go：把练习带到任何 AI 对话里
+
+BingeLingo 还可以把：
+
+* 角色
+* 目标表达
+* 对话长度
+* 提示强度
+* 场景
+* 纠错方式
+
+组合成一段可直接使用的 Prompt。
+
+用户可以把它带到 ChatGPT、Claude、Kimi、豆包等 AI 对话工具中继续练习。
+
+## BingeLingo 的核心学习闭环
+
+**Capture → Recall → Use**
+
+不是收集更多表达，而是让表达经历三次变化：
+
+**看到它 → 想起它 → 用出来**
+
+这是 BingeLingo 最核心的产品假设：
+
+> 一个表达真正进入主动词汇，不是在用户第一次理解它的时候，而是在不同语境里成功把它调出来的时候。
+
+## 我负责的工作
+
+这个项目从产品概念到可运行 MVP 均由我独立完成，包括：
+
+* 英语学习场景与核心问题定义
+* 从截图收藏到主动输出的学习闭环设计
+* 多模态字幕识别与表达筛选逻辑
+* 情境回忆与渐进式提示机制
+* 影视角色对话练习设计
+* 可迁移 AI Prompt 的生成逻辑
+* Notion 知识卡结构设计
+* 模型结构化输出与异常恢复
+* Flask Web 应用与前端交互实现
+* SQLite 本地学习记录设计
+* Render 部署与线上 Demo
+
+## AI 在这里做什么
+
+BingeLingo 并不是简单地让 AI "解释一句英文"。
+
+AI 主要承担三个角色：
+
+### 从画面中理解表达
+
+通过多模态模型读取字幕截图，并从中筛选真正值得主动学习的表达。
+
+### 为表达生成新的回忆情境
+
+复习时不直接重复原句，而是生成新的自然语境，让用户重新调取同一个表达。
+
+### 创造可使用表达的对话机会
+
+Scene Talk 根据目标表达与角色设定生成对话，让用户在语境中完成主动输出。
+
+这使 AI 不只是"答案生成器"，而成为学习过程中的**情境生成器**。
+
+## 产品流程
+
+**字幕截图**
+
+↓
+
+**多模态识别值得学习的表达**
+
+↓
+
+**保存释义、上下文、原句和截图**
+
+↓
+
+**在新情境中进行主动回忆**
+
+↓
+
+**通过角色对话练习真实使用**
+
+↓
+
+**将练习 Prompt 带到其他 AI 对话工具**
+
+## 技术实现
+
+### Tech Stack
+
+* Python 3.11
+* Flask / Gunicorn
+* OpenAI Python SDK
+* OpenAI-compatible multimodal model
+* Notion API
+* SQLite
+* HTML / CSS / Vanilla JavaScript
+* watchdog
+* Render
+
+### Architecture
 
 ```text
 macOS screenshot folder
         │
         ▼
-watchdog → src/vision.py → OpenAI-compatible model endpoint
-        │                         │
-        │                         └─ structured Tool Calling output
-        ▼
-src/notion_writer.py → Notion cards + source screenshot
+watchdog → vision model
         │
         ▼
-review.py (Flask / Gunicorn)
-        ├─ Revision       → Notion cards + data/review_log.db
-        ├─ Scene Talk     → data/characters.db + in-memory sessions
-        ├─ Show settings  → data/app_settings.db
-        └─ Practice to Go → portable prompt assembled in the browser
+structured expression extraction
+        │
+        ▼
+Notion knowledge cards
+        │
+        ├── Revision → SQLite review history
+        │
+        ├── Scene Talk → character sessions
+        │
+        └── Practice to Go → portable prompt
 ```
 
-The code uses the OpenAI Python SDK against an OpenAI-compatible Chat Completions
-API. The deployed version currently uses Volcengine Ark. The model and endpoint
-are configured through environment variables rather than hard-coded provider
-credentials.
+## 工程实现亮点
 
-## Engineering highlights
+* 多模态字幕截图解析
+* Structured Tool Calling，避免依赖自由文本解析
+* 表达词形归一化与筛选
+* Tool arguments 异常恢复
+* 支持词形变化的答案匹配
+* API 错误统一处理
+* 模型与 Provider 通过环境变量配置
+* 小型 Demo 的共享密码访问机制
 
-- Structured multimodal Tool Calling for screenshot analysis.
-- Prompt-level filtering and dictionary-form normalization of expressions.
-- Recovery for malformed or string-wrapped tool arguments.
-- Inflection-tolerant answer matching with word-order checks.
-- JSON API error normalization so HTML/empty upstream errors become readable UI messages.
-- Ark authentication migration from an incompatible SDK/header format.
-- Render timeout mitigation through smaller character-generation requests and disabled thinking.
-- Shared-password access gate for a small demo without collecting user accounts.
-
-## Tech stack
-
-| Area | Technology |
-| --- | --- |
-| Backend | Python 3.11, Flask, Gunicorn |
-| Model client | OpenAI Python SDK |
-| Model protocol | OpenAI-compatible Chat Completions with vision and Tool Calling |
-| Current provider | Volcengine Ark |
-| Knowledge store | Notion API |
-| Local state | SQLite and small local state files |
-| Capture | watchdog, macOS screenshot workflow |
-| Frontend | HTML, CSS, vanilla JavaScript, Fetch API |
-| Deployment | Render |
-
-## Repository structure
-
-The main product surfaces are `main.py`, `review.py`, `src/vision.py`,
-`src/chat.py`, `src/review_log.py`, `src/characters.py`, `src/settings.py`,
-`web/review.html`, `web/chat.html`, `web/export.html`, and `render.yaml`.
-
-```text
-binge-lingo/
-├── main.py                    # watcher and single-image entry point
-├── review.py                  # Flask app and authenticated API routes
-├── render.yaml                # Render service definition
-├── Procfile                   # Gunicorn entry point
-├── requirements.txt
-├── src/
-│   ├── config.py              # environment and path configuration
-│   ├── watcher.py             # screenshot-folder observer
-│   ├── vision.py              # vision analysis and review-sentence generation
-│   ├── models.py              # extraction data structures
-│   ├── notion_writer.py       # Notion page and image writes
-│   ├── notion_reader.py       # Notion cards for the web application
-│   ├── matching.py            # inflection-tolerant answer checking
-│   ├── review_log.py          # Revision history in SQLite
-│   ├── characters.py          # character personas in SQLite
-│   ├── chat.py                # Scene Talk generation and sessions
-│   └── settings.py            # current-show state in SQLite
-├── web/
-│   ├── login.html
-│   ├── review.html
-│   ├── chat.html
-│   ├── export.html
-│   ├── common.js
-│   ├── review.js
-│   ├── chat.js
-│   ├── export.js
-│   ├── api-response.js
-│   └── style.css
-├── tests/
-│   ├── test_chat_cast.py
-│   ├── test_configuration_contract.py
-│   ├── test_repository_accuracy.py
-│   └── api-response.test.js
-└── data/                      # runtime SQLite files; databases are git-ignored
-```
-
-## Local setup
+## 本地运行
 
 ```bash
 git clone https://github.com/yangqing8205/binge-lingo.git
 cd binge-lingo
+
 python3 -m venv .venv
 source .venv/bin/activate
+
 pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Configure `.env` before importing or running the application:
-
-| Variable | Purpose |
-| --- | --- |
-| `API_BASE_URL` | OpenAI-compatible Chat Completions base URL |
-| `API_KEY` | API key for the configured provider |
-| `API_MODEL` | Provider model name or endpoint ID; required |
-| `NOTION_TOKEN` | Notion integration token |
-| `NOTION_DATABASE_ID` | Target Notion database ID |
-| `APP_PASSWORD` | Shared password for the web app; required |
-| `SECRET_KEY` | Stable Flask session-signing secret |
-| `WATCH_DIR` | Screenshot root; defaults to `./screenshots` |
-| `IMAGE_HOST` | `notion` or `imgur` |
-| `IMGUR_CLIENT_ID` | Required only for Imgur uploads |
-| `HTTPS_PROXY` | Optional proxy for Notion/image-host traffic |
-
-For the base Notion schema, create `Expression` as the title property and
-`Chinese`, `Context`, `Difficulty`, `Example`, and `Screenshot` as rich-text
-properties. The application can add `ReviewSentence`, `CommonStructure`, `Source`,
-`Show`, and `Episode` when they are missing.
-
-## Usage
-
-Start the screenshot watcher:
+配置 `.env` 后：
 
 ```bash
 python main.py
 ```
 
-It asks for the show and optional episode, then watches the corresponding folder.
-To process one image directly:
-
-```bash
-python main.py path/to/screenshot.png
-```
-
-Start the web application locally:
+启动 Web 应用：
 
 ```bash
 python review.py
-# http://127.0.0.1:5001
 ```
 
-Available pages:
+本地访问：
 
-- `/review` — contextual Revision
-- `/chat` — Scene Talk
-- `/export` — Practice to Go
+```text
+http://127.0.0.1:5001
+```
 
-## Render deployment
+## 当前限制
 
-`render.yaml` installs the Python requirements and serves `review:app` through
-Gunicorn. The current deployment intentionally uses one worker because active
-Scene Talk sessions are stored in process memory. Keep the existing 120-second
-timeout for model-backed character generation.
+当前版本仍是个人 MVP：
 
-Configure `API_BASE_URL`, `API_KEY`, `API_MODEL`, `NOTION_TOKEN`,
-`NOTION_DATABASE_ID`, and `APP_PASSWORD` in Render. `render.yaml` generates a
-stable `SECRET_KEY`.
+* 自动截图流程目前以 macOS 为主
+* 尚未实现完整 SRS 调度
+* Scene Talk session 暂存在进程内存中
+* Render 免费实例可能存在冷启动
+* 暂无语音输入、发音评分和 TTS
+* 当前不是多人账户系统
+* 部分状态依赖 SQLite 与本地文件
 
-## Current limitations
-
-- The automatic capture workflow is macOS-first.
-- This is a personal MVP with a shared password, not a multi-tenant account system.
-- Cards depend on the owner's Notion database.
-- SQLite data and current-show settings are ephemeral on Render without a persistent disk.
-- Scene Talk sessions are lost on process restart and currently require one worker.
-- Revision records attempts but does not yet schedule a full SRS queue.
-- Scene Talk target selection still reads the full card set instead of only the active show.
-- There is no speech input, pronunciation scoring, or TTS yet.
-- Render free instances may cold-start or time out during model requests.
-
-See [TODO.md](TODO.md) for the current roadmap.
+详细路线图见 `TODO.md`。
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT
